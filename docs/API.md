@@ -1,0 +1,253 @@
+# API contract
+
+Base URL `http://<host>:<port>`. JSON in, JSON out, except media
+responses. **Implemented and tested against a real Plex library** — see
+the top-level README for current status of the Kodi/Jellyfin backends.
+
+Every request carries `X-Api-Key: <shared secret>`. Anything without it
+gets `401` and no body. The key is generated on the box, shown once in
+the web UI, and typed into clients.
+
+---
+
+## Lifecycle
+
+These four steps are a real sequence; each depends on the one before.
+
+1. **Configure once, in the web UI.** Media-server credentials are
+   entered on the service's own setup page and stay there. Clients never
+   see or send them.
+2. **Submit a batch.** A client posts captures and gets an immediate
+   acknowledgement. Nothing blocks.
+3. **Poll for state.** One request covers the whole queue.
+4. **Fetch lazily.** Media is pulled per capture when first needed.
+   Framewright is the store of record.
+
+---
+
+## Endpoints
+
+### `GET /health`
+
+Liveness plus enough state for a dashboard without a second call.
+
+```json
+{
+  "service": "framewright",
+  "version": "0.1.0",
+  "ffmpeg": "7.1",
+  "servers": 2,
+  "queued": 12,
+  "running": 2,
+  "failed": 1
+}
+```
+
+### `GET /servers`
+
+Configured media servers, so a client can let the user pick one (or
+match by kind) when submitting. **Read-only and credential-free.**
+Adding, editing and removing servers happens in the web UI; there is
+deliberately no client-facing endpoint for it.
+
+```json
+{
+  "servers": [
+    {
+      "serverId": "srv_7f3a",
+      "kind": "kodi",
+      "name": "Living Room Shield",
+      "reachable": true
+    }
+  ]
+}
+```
+
+`kind` is one of `plex`, `kodi`, `jellyfin`.
+
+### `POST /jobs`
+
+Submit a batch. Idempotent by `captureId` — resubmitting something
+already done is skipped rather than redone, unless `force` is set.
+
+```json
+{
+  "force": false,
+  "jobs": [
+    {
+      "captureId": "any-stable-client-chosen-string",
+      "source": { "serverId": "srv_7f3a", "itemId": "512" },
+      "timestampSeconds": 5700,
+      "spanSeconds": 20,
+      "fps": 10
+    }
+  ]
+}
+```
+
+`itemId` is that server's own id: Plex `ratingKey`, Kodi `movieid`,
+Jellyfin item GUID.
+
+→ `202`
+
+```json
+{
+  "accepted": 1,
+  "skipped": 0,
+  "jobs": [{ "captureId": "...", "state": "queued" }]
+}
+```
+
+### `GET /jobs`
+
+Whole queue. Optional `?state=failed`, `?since=<iso8601>`.
+
+```json
+{
+  "jobs": [
+    {
+      "captureId": "...",
+      "state": "done",
+      "frameCount": 200,
+      "stillBytes": 142880,
+      "clipBytes": 486211,
+      "updatedAt": "2026-08-21T18:04:11Z",
+      "error": null,
+      "mediaInfo": { }
+    }
+  ]
+}
+```
+
+### `GET /jobs/{captureId}`
+
+One job. `captureId` is client-chosen and may contain anything, so it
+must be percent-encoded in the path.
+
+### `GET /media/{captureId}/still` · `GET /media/{captureId}/clip`
+
+The artifacts, as `image/jpeg` and `video/mp4`. `404` unless the job is
+`done`. Support `ETag` / `If-None-Match` so clients can re-check cheaply.
+
+### `DELETE /jobs/{captureId}`
+
+Drops the job and its media so it can be regenerated — the escape hatch
+for a bad timestamp or a capture that came out badly.
+
+---
+
+## Job model
+
+States: `queued` · `running` · `done` · `failed`
+
+| Field | Type | Notes |
+|---|---|---|
+| `captureId` | string | Primary key, chosen by the CLIENT and opaque here. Any stable string it can regenerate. Doubles as the idempotency key. |
+| `source.serverId` | string | Which configured server holds this item. From `GET /servers`. |
+| `source.itemId` | string | That server's own id. Resolved to a URL per backend. |
+| `timestampSeconds` | int | Where the capture starts. Seconds, not milliseconds. |
+| `spanSeconds` | int | Clip length. Default 20. |
+| `fps` | int | Clip frame rate. Default 10. |
+| `state` | enum | One of the four above. |
+| `error` | string? | Human-readable reason when `failed`. Null otherwise. |
+| `frameCount` | int? | Frames actually written. **1 means nothing animates — treat as failure.** |
+| `stillBytes` | int? | Size of the generated still, once `done`. |
+| `clipBytes` | int? | Size of the generated clip, once `done`. |
+| `mediaInfo` | object? | ffprobe results, below. |
+| `updatedAt` | ISO 8601 | Drives `?since=` polling. |
+
+---
+
+## Output spec
+
+Fixed by the service so clients never negotiate formats. Was a GIF
+until 2026-08-23 — see `docs/DECISIONS.md` for why that changed to a
+real video: GIF has no inter-frame compression, so its size scales
+almost linearly with `spanSeconds × fps`, which stopped being viable
+once a clip needed to run longer than a few seconds.
+
+| | Still | Clip |
+|---|---|---|
+| Format | JPEG | MP4 (H.264, `yuv420p`, faststart) |
+| Width | up to 1280px | up to 480px |
+| Duration | single frame | `spanSeconds` (default 20) |
+| Frame rate | — | `fps` (default 10) |
+| Audio | — | stripped |
+| Typical size | ~150 KB | ~100–500 KB, depends on content |
+
+---
+
+## Media info
+
+Returned on the job. See `SERVER-NOTES.md` for the ffprobe invocation
+and the derivation rules.
+
+```json
+{
+  "durationMs": 8296320,
+  "container": "matroska,webm",
+  "video": {
+    "codec": "hevc",
+    "width": 3840,
+    "height": 1600,
+    "bitDepth": 10,
+    "frameRate": "23.976",
+    "hdr": "HDR10",
+    "dolbyVision": { "profile": 8, "level": 6 }
+  },
+  "audio": [
+    {
+      "codec": "truehd",
+      "profile": "Dolby TrueHD + Dolby Atmos",
+      "channels": 8,
+      "channelLayout": "7.1",
+      "spatial": "atmos",
+      "default": true
+    }
+  ]
+}
+```
+
+---
+
+## Failure handling
+
+- Capture the last few lines of ffmpeg's stderr into `error`. That's
+  almost always the actionable part.
+- **Never let a credential reach the error string.** It appears in the
+  source URL, so scrub before storing or returning.
+- A job producing one frame is `failed`, not `done`.
+- Retry transient network failures a couple of times with backoff. Do
+  not retry a decode error — it will fail identically forever.
+- Keep failed jobs in the queue. They're the whole reason the Jobs page
+  exists.
+
+---
+
+## Web UI
+
+Three pages, server-rendered, embedded in the binary.
+
+| Page | What it does |
+|---|---|
+| **Setup** | Add, edit and remove media servers, each with a *Test connection* button that verifies before saving. Generate and rotate the API key. |
+| **Jobs** | The queue, filterable by state. Failures show the captured ffmpeg error. Thumbnails of completed captures, with retry and delete. |
+| **Health** | Service version, detected ffmpeg version, disk used by stored media, per-server reachability. |
+
+Open by default on the LAN, no login (revised 2026-08-23 — see
+docs/DECISIONS.md "Web UI is open by default, not Basic-Auth-walled").
+It does manage media-server credentials, but the earlier "must be
+behind at least the API key" stance made first login circular in
+practice and didn't match how comparable self-hosted tools (Sonarr,
+Radarr, Overseerr) actually behave on a trusted home LAN.
+
+---
+
+## Deployment
+
+See the top-level README's Quick start and `docker-compose.yml` for the
+real, working compose file (host networking on Linux — see its own
+comments for why: a bridge network's Docker-internal source IP gets
+misclassified as WAN traffic by Plex and fast-rejected). No published
+container image yet; build from source (`docker compose build` or the
+Dockerfile directly) — multi-arch (`linux/amd64`, `linux/arm64`).

@@ -1,0 +1,25 @@
+{{define "health"}}
+<h1>Health</h1>
+<p class="lede">Service version, ffmpeg, and per-server reachability.</p>
+
+<div class="card">
+  <table>
+    <tr><td class="muted">Service</td><td>{{.Health.Service}} {{.Health.Version}}</td></tr>
+    <tr><td class="muted">ffmpeg</td><td>{{if .Health.FFmpeg}}{{.Health.FFmpeg}}{{else}}<span class="pill failed">not found on PATH</span>{{end}}</td></tr>
+    <tr><td class="muted">Data directory</td><td class="mono">{{.DataDir}}</td></tr>
+    <tr><td class="muted">Media on disk</td><td>{{.MediaDiskUsage}}</td></tr>
+    <tr><td class="muted">Retention</td><td>{{.Retention}}</td></tr>
+    <tr><td class="muted">Queue</td><td>{{.Health.Queued}} queued · {{.Health.Running}} running · {{.Health.Failed}} failed</td></tr>
+  </table>
+</div>
+
+<h2>Servers</h2>
+{{range .Servers}}
+<div class="card row">
+  <div><strong>{{.Name}}</strong> <span class="muted">· {{.Kind}}</span></div>
+  {{if .LastReachable}}<span class="pill done">reachable</span>{{else}}<span class="pill failed">unreachable</span>{{end}}
+</div>
+{{else}}
+<p class="muted">No servers configured.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,101 @@
+{{define "jobs"}}
+<h1>Jobs</h1>
+<p class="lede">The whole queue. Failures show the ffmpeg error that caused them.</p>
+
+<div class="row" style="margin-bottom:16px">
+  <div class="row" style="gap:8px; width:auto">
+    <a class="btn secondary" href="/ui/jobs">All</a>
+    <a class="btn secondary" href="/ui/jobs?state=queued">Queued</a>
+    <a class="btn secondary" href="/ui/jobs?state=running">Running</a>
+    <a class="btn secondary" href="/ui/jobs?state=done">Done</a>
+    <a class="btn secondary" href="/ui/jobs?state=failed">Failed</a>
+  </div>
+</div>
+
+{{if not .Jobs}}
+<p class="muted">No jobs {{if .StateFilter}}in state "{{.StateFilter}}"{{end}} yet. Submit some from a client.</p>
+{{end}}
+
+{{range .Jobs}}
+<div class="card">
+  <div class="row">
+    <div>
+      <span class="mono">{{.CaptureID}}</span>
+      <span class="pill {{.State}}" style="margin-left:8px">{{.State}}</span>
+    </div>
+    <span class="muted">{{.UpdatedAt.Format "Jan 2 15:04:05"}}</span>
+  </div>
+  <div class="muted" style="margin-top:6px">
+    {{.Source.ServerID}} · item {{.Source.ItemID}} · {{.TimestampSeconds}}s, {{.SpanSeconds}}s span, {{.FPS}}fps
+    {{if eq .State "done"}} · {{.FrameCount}} frames · {{.ClipBytes}} bytes{{end}}
+  </div>
+  {{if .Error}}
+  <div class="flash error" style="margin-top:10px; margin-bottom:0;">{{.Error}}</div>
+  {{end}}
+  {{if eq .State "running"}}
+  <div style="margin-top:10px">
+    <a href="#" class="muted" style="text-decoration:underline; font-size:12px" onclick="toggleLog('{{.CaptureID}}'); return false;">
+      <span id="log-toggle-{{.CaptureID}}">view live log</span>
+    </a>
+    <pre id="log-{{.CaptureID}}" class="mono" style="display:none; margin-top:8px; max-height:240px; overflow-y:auto; background:var(--sunk); border:1px solid var(--border); padding:10px 12px; border-radius:8px; font-size:11.5px; white-space:pre-wrap; color:var(--ink-soft);"></pre>
+  </div>
+  {{end}}
+  {{if eq .State "done"}}
+  <div style="margin-top:10px">
+    <img src="/ui/jobs/{{.CaptureID}}/thumb" style="max-height:90px; border-radius:6px; border:1px solid var(--border)" alt="">
+  </div>
+  {{end}}
+  <div style="margin-top:12px">
+    <form class="inline" method="post" action="/ui/jobs/{{.CaptureID}}/delete" onsubmit="return confirm('Delete this job and its media?')">
+      <button type="submit" class="danger">Delete</button>
+    </form>
+  </div>
+</div>
+{{end}}
+
+<script>
+  // "view live log" (2026-08-22) — plain polling into a <pre>, not
+  // SSE/WebSocket: this is a self-hosted admin page checked by a
+  // handful of people at most, and a job worth watching is measured in
+  // seconds to low minutes, so a 1.5s poll costs nothing and needs no
+  // extra infrastructure. Only polls while a box is actually expanded
+  // (opening several at once just multiplies harmless GET requests, but
+  // there's no reason to run them for boxes nobody's looking at), and
+  // stops on its own once the job leaves "running" — the server's
+  // answer for a finished job is always {running:false}, at which point
+  // its own Error/thumbnail already tell the fuller story.
+  const logTimers = {};
+  function toggleLog(captureId) {
+    const pre = document.getElementById('log-' + captureId);
+    const label = document.getElementById('log-toggle-' + captureId);
+    const showing = pre.style.display !== 'none';
+    if (showing) {
+      pre.style.display = 'none';
+      label.textContent = 'view live log';
+      clearInterval(logTimers[captureId]);
+      delete logTimers[captureId];
+      return;
+    }
+    pre.style.display = 'block';
+    label.textContent = 'hide live log';
+    pollLog(captureId);
+    logTimers[captureId] = setInterval(() => pollLog(captureId), 1500);
+  }
+  function pollLog(captureId) {
+    const pre = document.getElementById('log-' + captureId);
+    if (!pre) return;
+    fetch('/ui/jobs/' + captureId + '/log')
+      .then(r => r.json())
+      .then(data => {
+        pre.textContent = data.log || '(no output yet)';
+        pre.scrollTop = pre.scrollHeight;
+        if (!data.running) {
+          clearInterval(logTimers[captureId]);
+          delete logTimers[captureId];
+          pre.textContent += '\n\n(job finished — see status above)';
+        }
+      })
+      .catch(() => {});
+  }
+</script>
+{{end}}

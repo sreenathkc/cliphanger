@@ -1,0 +1,102 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Framewright</title>
+<style>
+  :root {
+    --ground: #131110; --surface: #1c1917; --sunk: #100e0d;
+    --border: #302b26; --ink: #efeae2; --ink-soft: #a9a093; --ink-faint: #7a7166;
+    --accent: #e8a94a; --accent-ink: #1a1410;
+    --queued: #7a7166; --running: #5aa9e6; --done: #5fb87a; --failed: #e0574f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.5 -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 24px;
+    padding: 14px 24px; border-bottom: 1px solid var(--border);
+  }
+  header .brand { font-weight: 700; letter-spacing: .02em; }
+  header .brand span { color: var(--accent); }
+  nav { display: flex; gap: 4px; }
+  nav a {
+    color: var(--ink-soft); text-decoration: none; padding: 6px 12px;
+    border-radius: 8px; font-size: 14px;
+  }
+  nav a.active { background: var(--surface); color: var(--ink); }
+  main { max-width: 880px; margin: 0 auto; padding: 28px 24px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 32px 0 12px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
+  p.lede { color: var(--ink-soft); margin: 0 0 24px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 14px;
+  }
+  .flash {
+    background: rgba(232,169,74,.12); border: 1px solid rgba(232,169,74,.35);
+    color: var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; font-size: 14px;
+  }
+  .flash.error { background: rgba(224,87,79,.12); border-color: rgba(224,87,79,.35); color: var(--failed); }
+  label { display: block; font-size: 13px; color: var(--ink-soft); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input, select {
+    width: 100%; background: var(--sunk); border: 1px solid var(--border);
+    color: var(--ink); border-radius: 8px; padding: 9px 11px; font-size: 14px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  button, .btn {
+    background: var(--accent); color: var(--accent-ink); border: none;
+    border-radius: 8px; padding: 9px 16px; font-size: 14px; font-weight: 600;
+    cursor: pointer; display: inline-block; text-decoration: none;
+  }
+  button.secondary, .btn.secondary {
+    background: transparent; color: var(--ink); border: 1px solid var(--border);
+  }
+  button.danger, .btn.danger { background: transparent; color: var(--failed); border: 1px solid rgba(224,87,79,.4); }
+  button.copy-btn { flex: 0 0 auto; padding: 0 12px; font-size: 15px; line-height: 1; }
+  button.secondary.selected { border-color: var(--accent); color: var(--accent); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .muted { color: var(--ink-faint); font-size: 13px; }
+  .hint {
+    background: var(--sunk); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin: 8px 0 4px; font-size: 13px; line-height: 1.55; color: var(--ink-soft);
+  }
+  .hint strong { color: var(--ink); }
+  .hint code { color: var(--accent); }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--ink-faint); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+  .pill.queued { background: rgba(122,113,102,.2); color: var(--queued); }
+  .pill.running { background: rgba(90,169,230,.15); color: var(--running); }
+  .pill.done { background: rgba(95,184,122,.15); color: var(--done); }
+  .pill.failed { background: rgba(224,87,79,.15); color: var(--failed); }
+  form.inline { display: inline; }
+  .keybox {
+    display: flex; gap: 8px; align-items: center; background: var(--sunk);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">FRAME<span>WRIGHT</span></div>
+  <nav>
+    <a href="/ui/setup" class="{{if eq .Nav "setup"}}active{{end}}">Setup</a>
+    <a href="/ui/jobs" class="{{if eq .Nav "jobs"}}active{{end}}">Jobs</a>
+    <a href="/ui/health" class="{{if eq .Nav "health"}}active{{end}}">Health</a>
+  </nav>
+</header>
+<main>
+  {{if .Flash}}<div class="flash {{if .FlashError}}error{{end}}">{{.Flash}}</div>{{end}}
+  {{.Content}}
+</main>
+</body>
+</html>
+{{end}}

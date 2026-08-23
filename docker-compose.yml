@@ -1,0 +1,43 @@
+# Matches the quick-start example in README.md / docs/API.md. Build the
+# image locally with `docker compose build` while there's no published
+# GHCR tag yet — once one is published, replace `build: .` with
+# `image: ghcr.io/OWNER/framewright:latest`.
+#
+# environment: is omitted entirely below rather than left empty — an
+# `environment:` key with nothing but comments under it parses as YAML
+# null, not an empty mapping, and Compose rejects that (confirmed
+# 2026-08-22, a real deploy failure: "services.framewright.environment
+# must be a mapping"). Uncomment the block if you actually want to set
+# one of these:
+#
+#   environment:
+#     # API_KEY: "change-me"  — omit this and Framewright generates one
+#     # on first run, shown once in the web UI (Setup page). Only set
+#     # here for a known key on infra-as-code setups; see
+#     # Store.SeedAPIKeyIfUnset for why it's not re-applied on restart.
+#     #
+#     # WORKERS: "3"  — this is already the default (see
+#     # cmd/framewright/main.go); only set it for a different
+#     # max-simultaneous-jobs cap.
+services:
+  framewright:
+    build: .
+    # Host networking, not a bridge + port mapping (changed 2026-08-23,
+    # a real live diagnosis, not a guess): under Docker's default bridge
+    # network, Framewright's outbound requests to a media server on the
+    # SAME LAN carry a Docker-internal source IP (e.g. 172.20.0.2), which
+    # Plex doesn't recognize as local — it logged those requests as
+    # "(WAN)" and fast-failed them with a 500, even though the exact same
+    # URL from a real LAN IP succeeded. Host networking makes Framewright
+    # share the host's own network stack, so it's indistinguishable from
+    # any other process on the box (same IP the NAS itself uses) — no
+    # media-server-side "trust this subnet" configuration needed. This
+    # is Linux-only (fine for the self-hosted NAS/home-server target this
+    # ships for) — Docker Desktop on Mac/Windows doesn't support it the
+    # same way; use the commented `ports:` mapping there instead.
+    network_mode: host
+    # ports:
+    #   - "8420:8420"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

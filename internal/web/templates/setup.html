@@ -1,0 +1,324 @@
+{{define "setup"}}
+<h1>Setup</h1>
+<p class="lede">Add your Plex, Kodi or Jellyfin servers here. Credentials stay on this box — clients never see them.</p>
+
+<h2>API key</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">Clients (like DemoFlex) send this in the <span class="mono">X-Api-Key</span> header. Rotating it immediately locks out anyone using the old one.</p>
+  <div class="keybox">
+    <code class="mono" id="apiKeyValue" style="flex:1; word-break:break-all;">{{.APIKey}}</code>
+    <button type="button" class="secondary copy-btn" onclick="copyField('apiKeyValue', this)" title="Copy API key" aria-label="Copy API key">⧉</button>
+  </div>
+  <form method="post" action="/ui/setup/apikey/rotate" style="margin-top:10px" onsubmit="return confirm('Rotate the API key? Every client using the current one will stop working until it is updated.')">
+    <button type="submit" class="secondary">Rotate key</button>
+  </form>
+</div>
+
+<h2>Retention</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    How long a finished job's still/clip and record stick around before being deleted automatically.
+    Framewright keeps everything <strong>forever by default</strong> — set a number of hours here only if you
+    want old jobs cleaned up on their own. Takes effect immediately, no restart needed.
+  </p>
+  <form method="post" action="/ui/setup/retention">
+    <div class="row" style="gap:8px; align-items:flex-end">
+      <div style="flex:1">
+        <label for="retentionHours" style="margin:0">Hours (0 = forever)</label>
+        <input type="number" name="retentionHours" id="retentionHours" min="0" value="{{.RetentionHours}}" placeholder="0">
+      </div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<h2>Media servers</h2>
+{{range .Servers}}
+<div class="card">
+  <div class="row">
+    <div>
+      <strong>{{.Name}}</strong>
+      <span class="muted">· {{.Kind}} · {{.Host}}:{{.Port}}</span>
+    </div>
+    <div class="row" style="gap:8px">
+      {{if .LastReachable}}<span class="pill done">reachable</span>{{else}}<span class="pill failed">unreachable</span>{{end}}
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <span class="muted">{{if not .LastCheckedAt.IsZero}}Last checked {{.LastCheckedAt.Format "Jan 2 15:04"}}{{else}}Never checked{{end}}</span>
+    <div class="row" style="gap:8px; width:auto">
+      <form class="inline" method="post" action="/ui/setup/servers/{{.ID}}/test">
+        <button type="submit" class="secondary">Test connection</button>
+      </form>
+      <form class="inline" method="post" action="/ui/setup/servers/{{.ID}}/delete" onsubmit="return confirm('Remove {{.Name}}? Jobs already submitted against it will start failing.')">
+        <button type="submit" class="danger">Remove</button>
+      </form>
+    </div>
+  </div>
+</div>
+{{else}}
+<p class="muted">No servers configured yet.</p>
+{{end}}
+
+<h2>Add a server</h2>
+<div class="card">
+  <form method="post" action="/ui/setup/servers">
+    <label for="kind">Kind</label>
+    <select name="kind" id="kind" onchange="updateFields(this.value)">
+      <option value="plex">Plex</option>
+      <option value="kodi">Kodi</option>
+      <option value="jellyfin">Jellyfin</option>
+    </select>
+
+    <div id="field-plex">
+      <p class="hint">
+        Click below, log into Plex in the tab that opens, and approve access. Framewright picks up the resulting
+        token <strong>and</strong> your server's host/port automatically — nothing to find, copy, paste or type.
+      </p>
+      <div class="row" style="justify-content:flex-start; gap:12px">
+        <button type="button" class="secondary" id="plex-signin-btn" onclick="startPlexSignIn()">Sign in with Plex</button>
+        <span id="plex-signin-status" class="muted"></span>
+      </div>
+      <div id="plex-server-list" style="display:none; margin-top:10px"></div>
+      <div style="margin-top:8px">
+        <a href="#" onclick="togglePlexManual(); return false;" class="muted" style="text-decoration:underline; font-size:12px">
+          <span id="plex-manual-toggle-label">or enter details manually</span>
+        </a>
+      </div>
+      <div id="plex-token-row" style="display:none; margin-top:10px">
+        <p class="hint">
+          Open the <strong>Plex Web App</strong> (app.plex.tv), go to any movie → the <strong>⋯</strong> menu →
+          <strong>Get Info</strong> → <strong>View XML</strong> (bottom-left). A new tab opens — the token is in
+          <em>that tab's address bar</em>, not the page text, as the part after <code class="mono">X-Plex-Token=</code>
+          (up to the next <code class="mono">&amp;</code> if there is one).
+        </p>
+        <label for="plexToken">Plex token</label>
+        <div class="row" style="gap:6px; align-items:stretch">
+          <input type="text" name="plexToken" id="plexToken" class="mono" style="flex:1">
+          <button type="button" class="secondary copy-btn" onclick="copyField('plexToken', this)" title="Copy token" aria-label="Copy Plex token">⧉</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="basic-fields" style="display:none">
+      <label for="name">Name</label>
+      <input type="text" name="name" id="name" placeholder="Living Room Shield" required>
+
+      <label for="host">Host</label>
+      <input type="text" name="host" id="host" placeholder="192.168.1.50" required>
+
+      <label for="port">Port</label>
+      <input type="number" name="port" id="port" value="32400">
+    </div>
+
+    <div id="field-kodi" style="display:none">
+      <p class="hint">
+        Kodi's web server has to be turned on first, on the Kodi box itself:
+        <strong>Settings → Services → Control → Allow remote control via HTTP</strong>.
+        Username/password below are only needed if you also enabled "Require authentication" on that same screen —
+        leave both blank otherwise. Note: Kodi only serves files inside a configured
+        <strong>source</strong> — a movie it can play isn't necessarily one it will hand over for extraction.
+      </p>
+      <label for="kodiUsername">Kodi username (optional)</label>
+      <input type="text" name="kodiUsername" id="kodiUsername">
+      <label for="kodiPassword">Kodi password (optional)</label>
+      <input type="password" name="kodiPassword" id="kodiPassword">
+      <p class="hint">
+        <strong>Optional fallback for the "outside a configured source" problem above.</strong> If Kodi's web
+        server refuses to serve a file (401) because it's outside a source, and Framewright happens to have its
+        own access to the same media (e.g. the same NAS share mounted separately), it can read the file directly
+        instead of giving up — but only for that one situation; every other item still goes through Kodi normally.
+        Fill in the two paths below only if you want this fallback: the path prefix <em>as Kodi's own library
+        reports it</em>, and the prefix Framewright should replace it with. Leave both blank to skip this — nothing
+        changes if you do.
+      </p>
+      <label for="localPathFrom">Kodi's path prefix (optional)</label>
+      <input type="text" name="localPathFrom" id="localPathFrom" class="mono" placeholder="/movies">
+      <label for="localPathTo">Framewright's path prefix (optional)</label>
+      <input type="text" name="localPathTo" id="localPathTo" class="mono" placeholder="/mnt/nas/Movies">
+    </div>
+    <div id="field-jellyfin" style="display:none">
+      <p class="hint">
+        In Jellyfin, go to <strong>Dashboard → API Keys</strong>, click <strong>+</strong>, give it a name like
+        "Framewright", and paste the key it generates below. Unlike Plex, this key is scoped to the server admin
+        who created it and can be revoked from that same page at any time.
+      </p>
+      <label for="jellyfinToken">Jellyfin API key</label>
+      <div class="row" style="gap:6px; align-items:stretch">
+        <input type="text" name="jellyfinToken" id="jellyfinToken" class="mono" style="flex:1">
+        <button type="button" class="secondary copy-btn" onclick="copyField('jellyfinToken', this)" title="Copy key" aria-label="Copy Jellyfin API key">⧉</button>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <button type="submit">Add server</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  // Copy-to-clipboard for token/key fields — added 2026-08-22, per
+  // direct request. Brief checkmark feedback instead of a toast; nothing
+  // to poll or clean up.
+  function copyField(elementId, btn) {
+    const el = document.getElementById(elementId);
+    // Works for both a real <input> (Plex/Jellyfin token fields) and a
+    // plain <code> display element (the API key box, which isn't an
+    // input at all) — 'value' only exists on the former.
+    const text = 'value' in el ? el.value : el.textContent;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      const original = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = original; }, 1200);
+    });
+  }
+
+  const defaultPorts = { plex: 32400, kodi: 8080, jellyfin: 8096 };
+  let plexManualMode = false;
+  function updateFields(kind) {
+    document.getElementById('field-plex').style.display = kind === 'plex' ? 'block' : 'none';
+    document.getElementById('field-kodi').style.display = kind === 'kodi' ? 'block' : 'none';
+    document.getElementById('field-jellyfin').style.display = kind === 'jellyfin' ? 'block' : 'none';
+    document.getElementById('port').value = defaultPorts[kind];
+    // Name/Host/Port stay hidden for Plex — direct request (2026-08-23):
+    // "no need to show the server name/ip/host input field before the
+    // sign in with plex button, it confuses... like in the demoflex app,
+    // just give only Sign in with Plex or enter manually." Sign-in fills
+    // these in behind the scenes once a server is picked; showing them
+    // up front made it look like typing was required regardless. Kodi
+    // and Jellyfin have no sign-in flow, so they always need these.
+    document.getElementById('basic-fields').style.display = (kind === 'plex' && !plexManualMode) ? 'none' : 'block';
+  }
+
+  // "Sign in with Plex" (2026-08-22) — the default way to fill in
+  // plexToken (and, since 2026-08-23, host/port/name too — see
+  // fetchPlexServers below), with manual entry kept as a fallback.
+  // Restructured 2026-08-23 into a genuine either/or, not both shown at
+  // once: signing in hides the manual fields entirely; choosing manual
+  // entry hides the sign-in button/server list entirely. Opens
+  // plex.tv's own approval page in a new tab, then polls this server
+  // (which itself proxies to plex.tv — see web.go's handlePollPlexPin)
+  // every 2s until the token comes back or the attempt times out.
+  function togglePlexManual() {
+    plexManualMode = !plexManualMode;
+    const tokenRow = document.getElementById('plex-token-row');
+    const label = document.getElementById('plex-manual-toggle-label');
+    const signinRow = document.getElementById('plex-signin-btn').parentElement;
+    const serverList = document.getElementById('plex-server-list');
+    const status = document.getElementById('plex-signin-status');
+
+    document.getElementById('basic-fields').style.display = plexManualMode ? 'block' : 'none';
+    tokenRow.style.display = plexManualMode ? 'block' : 'none';
+    signinRow.style.display = plexManualMode ? 'none' : 'flex';
+    label.textContent = plexManualMode ? 'or sign in with Plex instead' : 'or enter details manually';
+    if (plexManualMode) {
+      serverList.style.display = 'none';
+      status.textContent = '';
+    }
+  }
+
+  let plexPollTimer = null;
+  function startPlexSignIn() {
+    const status = document.getElementById('plex-signin-status');
+    const btn = document.getElementById('plex-signin-btn');
+    btn.disabled = true;
+    status.textContent = 'Opening Plex sign-in…';
+
+    fetch('/ui/setup/plex/pin', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { throw new Error(data.error); }
+        window.open(data.authUrl, '_blank');
+        status.textContent = 'Waiting for approval in the other tab…';
+        if (plexPollTimer) clearInterval(plexPollTimer);
+        let attempts = 0;
+        plexPollTimer = setInterval(() => {
+          attempts++;
+          // ~5 minutes at 2s per attempt — plex.tv's own pin expiry is
+          // 30 minutes, but a much shorter local timeout gives up-front
+          // feedback instead of leaving a disabled button for half an hour.
+          if (attempts > 150) {
+            clearInterval(plexPollTimer);
+            btn.disabled = false;
+            status.textContent = 'Timed out waiting for approval — try again, or enter a token manually.';
+            return;
+          }
+          fetch('/ui/setup/plex/pin/' + data.pinId)
+            .then(r => r.json())
+            .then(poll => {
+              if (poll.error) { throw new Error(poll.error); }
+              if (poll.status === 'done') {
+                clearInterval(plexPollTimer);
+                document.getElementById('plexToken').value = poll.token;
+                status.textContent = '✓ Signed in — looking for your servers…';
+                fetchPlexServers(poll.token, btn, status);
+              }
+            })
+            .catch(err => {
+              clearInterval(plexPollTimer);
+              btn.disabled = false;
+              status.textContent = 'Sign-in failed: ' + err.message;
+            });
+        }, 2000);
+      })
+      .catch(err => {
+        btn.disabled = false;
+        status.textContent = 'Couldn\'t reach Plex: ' + err.message;
+      });
+  }
+
+  // The actual point of "Sign in with Plex" (2026-08-22, fixed per
+  // direct report — "the whole point... is to auto login and fill
+  // details, same like the iOS app"): the token alone still left
+  // host/port to type in by hand, which defeated the purpose. This
+  // fetches the account's servers and renders them as clickable rows —
+  // picking one fills host/port/name, matching what DemoFlex's own iOS
+  // sign-in already does. If discovery comes back empty or fails, this
+  // degrades to exactly the old behavior (token filled, host/port typed
+  // manually) rather than blocking on it.
+  function fetchPlexServers(token, btn, status) {
+    fetch('/ui/setup/plex/servers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        btn.disabled = false;
+        if (data.error || !data.servers || data.servers.length === 0) {
+          status.textContent = '✓ Signed in — token captured. Enter the host/port below (no servers found automatically).';
+          return;
+        }
+        status.textContent = '✓ Signed in — pick your server:';
+        const list = document.getElementById('plex-server-list');
+        list.innerHTML = '';
+        list.style.display = 'block';
+        data.servers.forEach(server => {
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'secondary';
+          row.style.cssText = 'display:block; width:100%; text-align:left; margin-bottom:6px';
+          row.textContent = server.name + ' — ' + server.host + ':' + server.port;
+          row.onclick = () => {
+            document.getElementById('name').value = server.name;
+            document.getElementById('host').value = server.host;
+            document.getElementById('port').value = server.port;
+            Array.from(list.children).forEach(c => c.classList.remove('selected'));
+            row.classList.add('selected');
+          };
+          list.appendChild(row);
+        });
+        // Exactly one server — just pick it, same as DemoFlex's own
+        // auto-select-when-there's-only-one behavior.
+        if (data.servers.length === 1) {
+          list.children[0].click();
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+        status.textContent = '✓ Signed in — token captured. Enter the host/port below (couldn\'t look up servers automatically).';
+      });
+  }
+</script>
+{{end}}
