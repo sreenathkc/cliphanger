@@ -221,9 +221,14 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 		LogSink:        sink,
 	}
 
+	// q.store.DefaultSpanSeconds(), not the bare model.DefaultSpanSeconds
+	// constant (2026-08-23) — the Setup page's own live-editable clip-
+	// duration setting; reads live off the store on every job the same
+	// way retention does, so a change there takes effect immediately,
+	// no restart.
 	span := job.SpanSeconds
 	if span <= 0 {
-		span = model.DefaultSpanSeconds
+		span = q.store.DefaultSpanSeconds()
 	}
 	fps := job.FPS
 	if fps <= 0 {

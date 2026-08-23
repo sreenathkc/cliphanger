@@ -75,6 +75,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /setup/servers/{id}/delete", s.withLogging(s.handleDeleteServer))
 	s.mux.HandleFunc("POST /setup/apikey/rotate", s.withLogging(s.handleRotateKey))
 	s.mux.HandleFunc("POST /setup/retention", s.withLogging(s.handleSetRetention))
+	s.mux.HandleFunc("POST /setup/clip-duration", s.withLogging(s.handleSetClipDuration))
 	s.mux.HandleFunc("GET /jobs", s.withLogging(s.handleJobs))
 	s.mux.HandleFunc("POST /jobs/{captureId}/delete", s.withLogging(s.handleDeleteJob))
 	s.mux.HandleFunc("GET /jobs/{captureId}/thumb", s.withLogging(s.handleThumb))
@@ -169,7 +170,8 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		"Title": "Setup", "Nav": "setup",
 		"Flash": flash, "FlashError": flashErr,
 		"APIKey": key, "Servers": s.store.ListServers(),
-		"RetentionHours": s.store.RetentionHours(),
+		"RetentionHours":     s.store.RetentionHours(),
+		"DefaultSpanSeconds": s.store.DefaultSpanSeconds(),
 	})
 }
 
@@ -196,6 +198,31 @@ func (s *Server) handleSetRetention(w http.ResponseWriter, r *http.Request) {
 		msg = fmt.Sprintf("Retention set to %d hour(s).", hours)
 	}
 	redirectWithFlash(w, r, "/ui/setup", msg, false)
+}
+
+// handleSetClipDuration is the Setup page's clip-duration "Save" action
+// (2026-08-23, per direct request — "add the option to adjust the
+// duration of the movie clip needs to be generated"). Applies to any
+// job that omits its own spanSeconds; a job that specifies one
+// explicitly (as DemoFlex itself always does) is unaffected — see
+// FramewrightMediaClient.swift. Bounded 1–120s: unbounded would let a
+// value slip in that produces a multi-minute-long "preview" clip, which
+// is not what this feature is for.
+func (s *Server) handleSetClipDuration(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectWithFlash(w, r, "/ui/setup", "Couldn't read that form submission.", true)
+		return
+	}
+	seconds, err := strconv.Atoi(r.FormValue("clipDurationSeconds"))
+	if err != nil || seconds < 1 || seconds > 120 {
+		redirectWithFlash(w, r, "/ui/setup", "Clip duration must be a whole number of seconds, 1–120.", true)
+		return
+	}
+	if err := s.store.SetDefaultSpanSeconds(seconds); err != nil {
+		redirectWithFlash(w, r, "/ui/setup", "Couldn't save clip duration: "+err.Error(), true)
+		return
+	}
+	redirectWithFlash(w, r, "/ui/setup", fmt.Sprintf("Default clip duration set to %ds.", seconds), false)
 }
 
 func (s *Server) handleAddServer(w http.ResponseWriter, r *http.Request) {

@@ -32,6 +32,30 @@
   </form>
 </div>
 
+<h2>Clip duration</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    How long a generated clip runs, for any job that doesn't specify its own <span class="mono">spanSeconds</span>
+    (DemoFlex always sends its own, so this only matters for other/manual clients). A clip is a plain H.264
+    encode — no cross-frame trickery — so file size scales roughly linearly with duration.
+  </p>
+  <form method="post" action="/ui/setup/clip-duration">
+    <div class="row" style="gap:8px; align-items:flex-end">
+      <div style="flex:1">
+        <label for="clipDurationSeconds" style="margin:0">Seconds (1–120)</label>
+        <div class="row" style="gap:10px; align-items:center; margin-top:4px">
+          <input type="range" id="clipDurationSecondsRange" min="1" max="120"
+                 value="{{.DefaultSpanSeconds}}" oninput="syncClipDuration(this.value)" style="flex:1">
+          <input type="number" name="clipDurationSeconds" id="clipDurationSeconds" min="1" max="120"
+                 value="{{.DefaultSpanSeconds}}" oninput="syncClipDuration(this.value)" style="width:70px">
+        </div>
+        <p class="muted" id="clipSizeEstimate" style="margin:6px 0 0"></p>
+      </div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
 <h2>Media servers</h2>
 {{range .Servers}}
 <div class="card">
@@ -157,6 +181,28 @@
 </div>
 
 <script>
+  // Clip-duration slider + number field, kept in sync, plus a live
+  // estimated-file-size hint (2026-08-23, per direct request: "give a
+  // hint about average clip file size for the selected duration"). No
+  // server round trip — the estimate is a rough constant (~6.5 KB per
+  // second, derived from real captures at the default 480px/10fps
+  // encode) rather than an exact prediction, which content-dependent
+  // compression can never really give anyway; the hint says so.
+  const CLIP_KB_PER_SECOND = 6.5;
+  function syncClipDuration(value) {
+    document.getElementById('clipDurationSecondsRange').value = value;
+    document.getElementById('clipDurationSeconds').value = value;
+    const seconds = parseInt(value, 10) || 0;
+    const estimateKB = Math.round(seconds * CLIP_KB_PER_SECOND);
+    document.getElementById('clipSizeEstimate').textContent = seconds > 0
+      ? `~${estimateKB} KB for a typical scene — busier or grainier scenes encode larger.`
+      : '';
+  }
+  // Populate the hint on page load too, not just after the first drag —
+  // otherwise it's blank until the user touches the control even though
+  // a real value is already selected.
+  syncClipDuration({{.DefaultSpanSeconds}});
+
   // Copy-to-clipboard for token/key fields — added 2026-08-22, per
   // direct request. Brief checkmark feedback instead of a toast; nothing
   // to poll or clean up.

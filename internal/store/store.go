@@ -59,6 +59,16 @@ type diskData struct {
 	// whatever the user set via the UI afterward.
 	RetentionHours      int  `json:"retentionHours"`
 	RetentionConfigured bool `json:"retentionConfigured"`
+
+	// DefaultSpanSeconds is what a job's own spanSeconds falls back to
+	// when a client omits it (2026-08-23, per direct request — "add the
+	// option to adjust the duration of the movie clip... default is
+	// 20"), the Setup page's live-editable clip-duration setting. Unlike
+	// RetentionHours, 0 is never itself a meaningful clip duration, so
+	// there's no separate "configured" flag needed to disambiguate an
+	// explicit 0 from "never touched" — 0/unset just means "use
+	// model.DefaultSpanSeconds," full stop.
+	DefaultSpanSeconds int `json:"defaultSpanSeconds"`
 }
 
 // Open loads path if it exists, or starts empty (first run) — either
@@ -170,6 +180,29 @@ func (s *Store) SeedRetentionHoursIfUnset(hours int) error {
 	}
 	s.data.RetentionHours = hours
 	s.data.RetentionConfigured = true
+	return s.writeLocked()
+}
+
+// DefaultSpanSeconds returns the currently configured default clip
+// duration in seconds — model.DefaultSpanSeconds until the Setup page
+// has ever been used to change it.
+func (s *Store) DefaultSpanSeconds() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data.DefaultSpanSeconds <= 0 {
+		return model.DefaultSpanSeconds
+	}
+	return s.data.DefaultSpanSeconds
+}
+
+// SetDefaultSpanSeconds is the Setup page's clip-duration "Save"
+// action — takes effect on the very next job that omits its own
+// spanSeconds, no restart needed (queue.process reads this live, same
+// pattern as RetentionHours).
+func (s *Store) SetDefaultSpanSeconds(seconds int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.DefaultSpanSeconds = seconds
 	return s.writeLocked()
 }
 

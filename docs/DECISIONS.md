@@ -28,7 +28,12 @@ and a static binary from one source. An interpreted runtime would make
 Docker effectively mandatory.
 
 **ffmpeg is an external dependency**, installed from the distro in the
-image. See CLAUDE.md for the licensing reason.
+image, never bundled into the binary or image build. Redistributing a
+compiled ffmpeg carries GPL/LGPL obligations that vary with exactly how
+it was built (which codecs/libraries were compiled in) — treating it as
+something the runtime environment provides, the same way a Python
+package doesn't vendor the Python interpreter, avoids taking on those
+obligations at all.
 
 ---
 

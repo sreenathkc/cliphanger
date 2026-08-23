@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 #
-# Manual deploy to a self-hosted NAS (2026-08-22, per direct request —
-# "just tell me how to deploy manually, using a script"). Deliberately
-# simple: no CI, no image registry, nothing public — matches where this
-# project actually is today. Run this by hand whenever you want to push
-# a new version.
+# Manual deploy to a self-hosted Synology NAS (2026-08-22, per direct
+# request — "just tell me how to deploy manually, using a script").
+# Synology-specific, not a generic NAS/Linux-box script — see the
+# passwordless-sudo and docker-path notes below, both particular to how
+# Synology's own Docker/Container Manager package is set up (renamed
+# 2026-08-23 from deploy-to-nas.sh to make that explicit). Deliberately
+# simple otherwise: no CI, no image registry, nothing public — matches
+# where this project actually is today. Run this by hand whenever you
+# want to push a new version.
 #
 # What it does:
 #   1. Tars this repo's source (minus .git and any local data/) and
@@ -35,14 +39,14 @@
 #   sudo sh -c 'echo "USERNAME ALL=(ALL) NOPASSWD: /usr/local/bin/docker" >> /etc/sudoers.d/framewright-deploy'
 #
 # Usage:
-#   ./deploy-to-nas.sh [user@host] [remote_path]
-#   ./deploy-to-nas.sh you@192.168.1.50 /volume1/docker/framewright
+#   ./deploy-to-synology-nas.sh [user@host] [remote_path]
+#   ./deploy-to-synology-nas.sh you@192.168.1.50 /volume1/docker/framewright
 #
 # Both arguments are optional if FRAMEWRIGHT_NAS_REMOTE (and optionally
 # FRAMEWRIGHT_NAS_PATH) are set in your OWN shell profile — not this
 # file, which is checked into version control — so you can just run
-# `./deploy-to-nas.sh` with no arguments day to day without your NAS's
-# host/user living in the repo:
+# `./deploy-to-synology-nas.sh` with no arguments day to day without
+# your NAS's host/user living in the repo:
 #   export FRAMEWRIGHT_NAS_REMOTE=you@192.168.1.50
 #   export FRAMEWRIGHT_NAS_PATH=/volume1/docker/framewright   # optional, this is the default
 
@@ -53,7 +57,7 @@ REMOTE_PATH="${2:-${FRAMEWRIGHT_NAS_PATH:-/volume1/docker/framewright}}"
 SSH_KEY="$HOME/.ssh/framewright_nas_deploy"
 
 if [ -z "$REMOTE" ]; then
-  echo "Usage: ./deploy-to-nas.sh [user@host] [remote_path]" >&2
+  echo "Usage: ./deploy-to-synology-nas.sh [user@host] [remote_path]" >&2
   echo "   or: export FRAMEWRIGHT_NAS_REMOTE=you@your-nas-ip (in your own shell profile, not this repo)" >&2
   exit 1
 fi
