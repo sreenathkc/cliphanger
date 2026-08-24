@@ -117,6 +117,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /setup/apikey/rotate", s.withLogging(s.handleRotateKey))
 	s.mux.HandleFunc("POST /setup/retention", s.withLogging(s.handleSetRetention))
 	s.mux.HandleFunc("POST /setup/clip-duration", s.withLogging(s.handleSetClipDuration))
+	s.mux.HandleFunc("POST /setup/speed-multiplier", s.withLogging(s.handleSetSpeedMultiplier))
 	s.mux.HandleFunc("GET /jobs", s.withLogging(s.handleJobs))
 	s.mux.HandleFunc("POST /jobs/{captureId}/delete", s.withLogging(s.handleDeleteJob))
 	s.mux.HandleFunc("GET /jobs/{captureId}/thumb", s.withLogging(s.handleThumb))
@@ -211,8 +212,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		"Title": "Setup", "Nav": "setup",
 		"Flash": flash, "FlashError": flashErr,
 		"APIKey": key, "Servers": s.store.ListServers(),
-		"RetentionHours":     s.store.RetentionHours(),
-		"DefaultSpanSeconds": s.store.DefaultSpanSeconds(),
+		"RetentionHours":         s.store.RetentionHours(),
+		"DefaultSpanSeconds":     s.store.DefaultSpanSeconds(),
+		"DefaultSpeedMultiplier": s.store.DefaultSpeedMultiplier(),
+		"DefaultFPS":             model.DefaultFPS,
 	})
 }
 
@@ -264,6 +267,29 @@ func (s *Server) handleSetClipDuration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectWithFlash(w, r, "/ui/setup", fmt.Sprintf("Default clip duration set to %ds.", seconds), false)
+}
+
+// handleSetSpeedMultiplier is the Setup page's playback-speed "Save"
+// action (2026-08-24, per direct request — "an option to make the clip
+// speed faster... to preview more of the scene in less time"). Same
+// shape as handleSetClipDuration. Bounded 1–8x: past that the source
+// read for a 20s clip would exceed 2+ minutes for very little
+// additional legibility in the compressed result.
+func (s *Server) handleSetSpeedMultiplier(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectWithFlash(w, r, "/ui/setup", "Couldn't read that form submission.", true)
+		return
+	}
+	multiplier, err := strconv.Atoi(r.FormValue("speedMultiplier"))
+	if err != nil || multiplier < 1 || multiplier > 8 {
+		redirectWithFlash(w, r, "/ui/setup", "Playback speed must be a whole number, 1–8x.", true)
+		return
+	}
+	if err := s.store.SetDefaultSpeedMultiplier(multiplier); err != nil {
+		redirectWithFlash(w, r, "/ui/setup", "Couldn't save playback speed: "+err.Error(), true)
+		return
+	}
+	redirectWithFlash(w, r, "/ui/setup", fmt.Sprintf("Default playback speed set to %dx.", multiplier), false)
 }
 
 func (s *Server) handleAddServer(w http.ResponseWriter, r *http.Request) {

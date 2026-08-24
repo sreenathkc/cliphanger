@@ -110,6 +110,15 @@ type Job struct {
 	TimestampSeconds int        `json:"timestampSeconds"`
 	SpanSeconds      int        `json:"spanSeconds"`
 	FPS              int        `json:"fps"`
+	// SpeedMultiplier plays back MORE of the source in the same output
+	// duration (2026-08-24, per direct request — "a scene can be a few
+	// minutes long... [a straight 20s clip] won't actually have the
+	// full scene's context"). At 2x, a 20s clip covers 40s of source,
+	// time-compressed via ffmpeg's setpts filter — see extract.Clip.
+	// Setup-page-only for now (no DemoFlex-side per-request control),
+	// so this is effectively always 0/omitted on real submissions,
+	// falling back to Store.DefaultSpeedMultiplier().
+	SpeedMultiplier  int        `json:"speedMultiplier,omitempty"`
 	State            JobState   `json:"state"`
 	Error            string     `json:"error,omitempty"`
 	FrameCount       int        `json:"frameCount,omitempty"`
@@ -135,6 +144,11 @@ type Job struct {
 const (
 	DefaultSpanSeconds = 20
 	DefaultFPS         = 10
+	// DefaultSpeedMultiplier: 2x by direct decision — a plain 1x/20s
+	// clip only ever shows 20 real seconds of a scene that can run
+	// several minutes, missing most of its context. 2x doubles how much
+	// of the scene a clip actually covers for the same output length.
+	DefaultSpeedMultiplier = 2
 )
 
 // MediaInfo is ffprobe's findings about the source file, attached to a

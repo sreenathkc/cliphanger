@@ -148,6 +148,7 @@ States: `queued` · `running` · `done` · `failed`
 | `timestampSeconds` | int | Where the capture starts. Seconds, not milliseconds. |
 | `spanSeconds` | int | Clip length. Default 20. |
 | `fps` | int | Clip frame rate. Default 10. |
+| `speedMultiplier` | int? | Reads `spanSeconds × speedMultiplier` of source, time-compressed back down to `spanSeconds` — covers more of a longer scene without a longer clip. Default 2, Setup-page-only in practice: DemoFlex doesn't send this per job (unlike `spanSeconds`), so the server's own configured default governs real submissions. |
 | `state` | enum | One of the four above. |
 | `error` | string? | Human-readable reason when `failed`. Null otherwise. |
 | `frameCount` | int? | Frames actually written. **1 means nothing animates — treat as failure.** |

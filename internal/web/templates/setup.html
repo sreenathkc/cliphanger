@@ -56,6 +56,43 @@
   </form>
 </div>
 
+<h2>Playback speed</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    Plays back MORE of the scene in the same clip duration, by reading extra source and
+    compressing its timeline — at 2x, a 20s clip actually covers 40s of the scene. A
+    demo-worthy moment can run a few minutes; 1x only ever shows a short slice of it.
+    Unlike clip duration above, DemoFlex doesn't send its own speed on a job — this
+    setting is the only thing that controls it, for every client.
+  </p>
+  <form method="post" action="/ui/setup/speed-multiplier">
+    <div class="row" style="gap:8px; align-items:flex-end">
+      <div style="flex:1">
+        <label for="speedMultiplier" style="margin:0">Speed (1&ndash;8x)</label>
+        <div class="row" style="gap:10px; align-items:center; margin-top:4px">
+          <input type="range" id="speedMultiplierRange" min="1" max="8"
+                 value="{{.DefaultSpeedMultiplier}}" oninput="syncSpeedMultiplier(this.value)" style="flex:1">
+          <input type="number" name="speedMultiplier" id="speedMultiplier" min="1" max="8"
+                 value="{{.DefaultSpeedMultiplier}}" oninput="syncSpeedMultiplier(this.value)" style="width:70px">
+        </div>
+        <p class="muted" id="speedExplainer" style="margin:6px 0 0"></p>
+      </div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<h2>ffmpeg command preview</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    The actual command a job runs, given the clip duration and speed settings above —
+    read-only for now (may become an editable advanced mode later).
+    <span class="mono">&lt;...&gt;</span> marks the parts that vary per job (source URL,
+    timestamp, output path).
+  </p>
+  <pre class="mono" id="ffmpegPreview" style="white-space:pre-wrap; word-break:break-all; background:var(--sunk); border:1px solid var(--border); border-radius:8px; padding:12px; margin:0; font-size:12px; line-height:1.6;"></pre>
+</div>
+
 <h2>Media servers</h2>
 {{range .Servers}}
 <div class="card">
@@ -189,6 +226,38 @@
   // encode) rather than an exact prediction, which content-dependent
   // compression can never really give anyway; the hint says so.
   const CLIP_KB_PER_SECOND = 6.5;
+  const DEFAULT_FPS = {{.DefaultFPS}};
+
+  // Mirrors extract.Clip's own filter chain exactly (2026-08-24) — see
+  // that function's header for why setpts has to come before fps in the
+  // chain. This is a hand-kept copy, not shared code with the Go side
+  // (a read-only preview didn't seem worth plumbing a shared-source
+  // endpoint for) — if extract.Clip's own flags ever change, this needs
+  // updating alongside it, same as any other cross-file coupling in
+  // this codebase that isn't enforced by the compiler.
+  function updateFfmpegPreview() {
+    const seconds = parseInt(document.getElementById('clipDurationSeconds').value, 10) || 0;
+    const multiplier = parseInt(document.getElementById('speedMultiplier').value, 10) || 1;
+    const sourceSpan = seconds * multiplier;
+    const filter = `setpts=PTS/${multiplier},fps=${DEFAULT_FPS},scale='min(480,iw)':-2:flags=lanczos`;
+    const cmd = [
+      'ffmpeg -ss <timestamp> -i <source-url>',
+      `-t ${sourceSpan} -an -vf "${filter}"`,
+      '-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart',
+      '-y <output.mp4>',
+    ].join(' \\\n  ');
+    document.getElementById('ffmpegPreview').textContent = cmd;
+  }
+
+  function updateSpeedExplainer() {
+    const seconds = parseInt(document.getElementById('clipDurationSeconds').value, 10) || 0;
+    const multiplier = parseInt(document.getElementById('speedMultiplier').value, 10) || 1;
+    const sourceSpan = seconds * multiplier;
+    document.getElementById('speedExplainer').textContent = multiplier > 1
+      ? `${sourceSpan}s of the scene condensed into a ${seconds}s clip (${multiplier}x).`
+      : `No speed-up — a ${seconds}s clip covers exactly ${seconds}s of the scene.`;
+  }
+
   function syncClipDuration(value) {
     document.getElementById('clipDurationSecondsRange').value = value;
     document.getElementById('clipDurationSeconds').value = value;
@@ -197,11 +266,22 @@
     document.getElementById('clipSizeEstimate').textContent = seconds > 0
       ? `~${estimateKB} KB for a typical scene — busier or grainier scenes encode larger.`
       : '';
+    updateSpeedExplainer();
+    updateFfmpegPreview();
   }
-  // Populate the hint on page load too, not just after the first drag —
-  // otherwise it's blank until the user touches the control even though
-  // a real value is already selected.
+
+  function syncSpeedMultiplier(value) {
+    document.getElementById('speedMultiplierRange').value = value;
+    document.getElementById('speedMultiplier').value = value;
+    updateSpeedExplainer();
+    updateFfmpegPreview();
+  }
+
+  // Populate every hint on page load too, not just after the first drag
+  // — otherwise they're blank until the user touches a control even
+  // though real values are already selected.
   syncClipDuration({{.DefaultSpanSeconds}});
+  syncSpeedMultiplier({{.DefaultSpeedMultiplier}});
 
   // Copy-to-clipboard for token/key fields — added 2026-08-22, per
   // direct request. Brief checkmark feedback instead of a toast; nothing

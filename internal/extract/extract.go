@@ -183,11 +183,30 @@ type ClipResult struct {
 // space (a source could be 10-bit HDR) — guarantees playback on
 // anything that can decode H.264 at all, same "flatten for universal
 // compatibility" reasoning the GIF path already applied.
-func Clip(ctx context.Context, src Source, atSeconds, spanSeconds, fps int, outPath string) (ClipResult, error) {
+//
+// speedMultiplier (2026-08-24, per direct request — "a scene can be a
+// few minutes long... [a straight clip] won't actually have the full
+// scene's context") pulls in MORE source than the output actually
+// spans, then time-compresses it back down via ffmpeg's `setpts`
+// filter — at 2x, spanSeconds=20 reads 40s of source but still writes
+// a 20s clip, showing twice as much of the scene in the same output
+// duration. `setpts` has to run BEFORE `fps` in the filter chain: it
+// rescales the presentation timestamps of the INPUT frames first, so
+// the fps filter downstream resamples against the already-compressed
+// timeline, not the original one — reversing the order would resample
+// at the wrong rate. speedMultiplier <= 0 is treated as 1 (no
+// compression), not an error — callers pass whatever
+// Store.DefaultSpeedMultiplier() resolves to, which is never actually
+// invalid, but this is a cheap defensive floor regardless.
+func Clip(ctx context.Context, src Source, atSeconds, spanSeconds, fps, speedMultiplier int, outPath string) (ClipResult, error) {
+	if speedMultiplier < 1 {
+		speedMultiplier = 1
+	}
+	sourceSpanSeconds := spanSeconds * speedMultiplier
 	args := src.inputArgs(atSeconds)
-	filter := fmt.Sprintf("fps=%d,scale='min(480,iw)':-2:flags=lanczos", fps)
+	filter := fmt.Sprintf("setpts=PTS/%d,fps=%d,scale='min(480,iw)':-2:flags=lanczos", speedMultiplier, fps)
 	args = append(args,
-		"-t", strconv.Itoa(spanSeconds), "-an",
+		"-t", strconv.Itoa(sourceSpanSeconds), "-an",
 		"-vf", filter,
 		"-c:v", "libx264",
 		"-preset", "veryfast",

@@ -69,6 +69,13 @@ type diskData struct {
 	// explicit 0 from "never touched" — 0/unset just means "use
 	// model.DefaultSpanSeconds," full stop.
 	DefaultSpanSeconds int `json:"defaultSpanSeconds"`
+
+	// DefaultSpeedMultiplier: same "0/unset means use the model
+	// constant" pattern as DefaultSpanSeconds above (2026-08-24, per
+	// direct request — "an option to make the clip speed faster... to
+	// preview more of the scene in less time"). Setup-page only; no
+	// per-job client override exists yet.
+	DefaultSpeedMultiplier int `json:"defaultSpeedMultiplier"`
 }
 
 // Open loads path if it exists, or starts empty (first run) — either
@@ -203,6 +210,27 @@ func (s *Store) SetDefaultSpanSeconds(seconds int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data.DefaultSpanSeconds = seconds
+	return s.writeLocked()
+}
+
+// DefaultSpeedMultiplier returns the currently configured playback
+// speed — model.DefaultSpeedMultiplier (2x) until the Setup page has
+// ever been used to change it. See the diskData field's own comment.
+func (s *Store) DefaultSpeedMultiplier() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data.DefaultSpeedMultiplier <= 0 {
+		return model.DefaultSpeedMultiplier
+	}
+	return s.data.DefaultSpeedMultiplier
+}
+
+// SetDefaultSpeedMultiplier is the Setup page's playback-speed "Save"
+// action — same live-takes-effect pattern as SetDefaultSpanSeconds.
+func (s *Store) SetDefaultSpeedMultiplier(multiplier int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.DefaultSpeedMultiplier = multiplier
 	return s.writeLocked()
 }
 

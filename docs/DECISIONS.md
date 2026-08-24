@@ -178,7 +178,38 @@ an MP4/H.264 (`spanSeconds` at `fps`, 20s at 10fps by default — GIF
 until 2026-08-23, replaced once a real clip needed to run longer than a
 few seconds without exploding in file size, see the MP4 entry below).
 Fewer knobs, fewer support questions, and the defaults suit the use
-case. `spanSeconds` and `fps` are adjustable per job; nothing else is.
+case. `spanSeconds`, `fps` and `speedMultiplier` (2026-08-24 — see the
+"Playback speed" entry below) are adjustable per job; nothing else is.
+`speedMultiplier` is the one exception to "clients choose their own
+defaults, the server just falls back": it's Setup-page-only in
+practice, since DemoFlex deliberately doesn't set it per job (unlike
+`spanSeconds`, which it always sends explicitly) — the server's own
+configured default is what actually governs every real submission.
+
+---
+
+## Playback speed: condense more of the scene, not just more seconds (2026-08-24)
+
+A demo-worthy moment can run several minutes; a fixed-length clip at
+1x only ever shows a short slice of it, missing most of the scene's
+actual context. `speedMultiplier` reads MORE source than the output
+spans and time-compresses it via ffmpeg's `setpts` filter — at the
+default 2x, a 20s clip covers 40s of the source. `setpts` runs before
+`fps` in the filter chain deliberately: it rescales input frame
+timestamps first, so the fps filter resamples against the
+already-compressed timeline rather than the original one — reversed,
+the frame rate would come out wrong. Bounded 1–8x on the Setup page;
+past 8x, reading 2+ minutes of source for a 20s clip stopped buying
+enough legibility in the compressed result to be worth the extra
+extraction time.
+
+Setup-page-only, not a DemoFlex-side per-request control, by direct
+decision — unlike `spanSeconds`. The Setup page also shows the actual
+ffmpeg command a job will run, given the current settings — read-only
+for now, a possible editable "advanced mode" later. The web UI's own
+copy of the filter-chain string is a hand-kept mirror of
+`extract.Clip`'s real one, not shared code — if that function's flags
+ever change, the preview needs updating alongside it.
 
 ---
 

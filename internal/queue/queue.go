@@ -234,6 +234,12 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 	if fps <= 0 {
 		fps = model.DefaultFPS
 	}
+	// Same live-store pattern as span above (2026-08-24) — see
+	// Store.DefaultSpeedMultiplier's own comment.
+	speedMultiplier := job.SpeedMultiplier
+	if speedMultiplier <= 0 {
+		speedMultiplier = q.store.DefaultSpeedMultiplier()
+	}
 
 	stillPath := q.mediaPath(job.CaptureID, "jpg")
 	clipPath := q.mediaPath(job.CaptureID, "mp4")
@@ -244,7 +250,7 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 	}
 	stillInfo, _ := os.Stat(stillPath)
 
-	clipResult, err := extract.Clip(ctx, src, job.TimestampSeconds, span, fps, clipPath)
+	clipResult, err := extract.Clip(ctx, src, job.TimestampSeconds, span, fps, speedMultiplier, clipPath)
 	if err != nil {
 		fail(fmt.Errorf("clip: %w", err))
 		return
