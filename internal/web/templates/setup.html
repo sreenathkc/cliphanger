@@ -206,6 +206,45 @@
   // Copy-to-clipboard for token/key fields — added 2026-08-22, per
   // direct request. Brief checkmark feedback instead of a toast; nothing
   // to poll or clean up.
+  // Rebuilt 2026-08-24, per direct report: "It didn't work when I tried
+  // from phone few times" — with zero feedback either way. Root cause:
+  // `navigator.clipboard` needs a secure context (HTTPS), and this UI is
+  // normally reached over plain HTTP on the LAN (http://<nas-ip>:8420) —
+  // on iOS Safari that makes `navigator.clipboard` simply undefined, so
+  // the old code threw immediately and silently, no error shown, no
+  // fallback. Now: try the modern API only when it's actually available,
+  // fall back to the old execCommand('copy') technique (works over plain
+  // HTTP, still broadly supported despite being deprecated) otherwise —
+  // and either way, show a real toast so success/failure is never silent
+  // again.
+  function showToast(message, isError) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.toggle('error', !!isError);
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  function legacyCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    // Off-screen, not display:none — iOS Safari won't select/copy an
+    // element that isn't actually laid out.
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.left = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
   function copyField(elementId, btn) {
     const el = document.getElementById(elementId);
     // Works for both a real <input> (Plex/Jellyfin token fields) and a
@@ -213,11 +252,22 @@
     // input at all) — 'value' only exists on the former.
     const text = 'value' in el ? el.value : el.textContent;
     if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
+
+    const onSuccess = () => {
       const original = btn.textContent;
       btn.textContent = '✓';
       setTimeout(() => { btn.textContent = original; }, 1200);
-    });
+      showToast('Copied to clipboard');
+    };
+    const onFailure = () => showToast("Couldn't copy — select and copy the text manually.", true);
+
+    if (window.isSecureContext && navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+        legacyCopy(text) ? onSuccess() : onFailure();
+      });
+    } else {
+      legacyCopy(text) ? onSuccess() : onFailure();
+    }
   }
 
   const defaultPorts = { plex: 32400, kodi: 8080, jellyfin: 8096 };

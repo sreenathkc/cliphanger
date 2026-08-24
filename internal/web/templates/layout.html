@@ -66,7 +66,20 @@
     background: transparent; color: var(--ink); border: 1px solid var(--border);
   }
   button.danger, .btn.danger { background: transparent; color: var(--failed); border: 1px solid rgba(224,87,79,.4); }
-  button.copy-btn { flex: 0 0 auto; padding: 0 12px; font-size: 15px; line-height: 1; }
+  /* Bigger tap target (2026-08-24, per direct report — "make the copy
+     api key button larger"): the old `padding: 0 12px` gave this
+     button almost no vertical size at all (just the 15px line-height),
+     well under any reasonable mobile tap-target size. */
+  button.copy-btn { flex: 0 0 auto; padding: 12px 18px; font-size: 19px; line-height: 1; }
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(12px);
+    background: var(--surface); border: 1px solid var(--border); color: var(--ink);
+    padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    box-shadow: 0 8px 28px rgba(0,0,0,.45); opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; z-index: 1000; max-width: 88vw; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { border-color: rgba(224,87,79,.5); color: var(--failed); }
   button.secondary.selected { border-color: var(--accent); color: var(--accent); }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .muted { color: var(--ink-faint); font-size: 13px; }
@@ -105,6 +118,7 @@
   {{if .Flash}}<div class="flash {{if .FlashError}}error{{end}}">{{.Flash}}</div>{{end}}
   {{.Content}}
 </main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
 {{end}}
