@@ -148,26 +148,34 @@ capture rather than pushed. ClipHanger is the store of record.
 `captureId` doubles as the idempotency key, so a client can re-send its
 entire list on every startup without tracking what it already asked for.
 
-**Cross-device reuse without ClipHanger knowing what a "movie" is
-(design decided 2026-08-22, not yet implemented — DemoFlex's own
-ClipHanger client doesn't exist yet):** a second phone can discover
-media ClipHanger already generated for the same scene, with zero
-coordination and zero ClipHanger API changes, if the CLIENT derives
-`captureId` deterministically instead of randomly — e.g.
-`sha256(imdbId + timestamp + runtimeFingerprint + spanSeconds + fps)`.
-Two devices with the same bookmark (same movie, same edition/encode,
-same scene) then independently compute the identical id and just
-`GET /jobs/{that-id}`; if it's already Done, that's the "sync." This
-was chosen over teaching ClipHanger to understand movie/scene identity
-(a real alternative that was considered and rejected — it would mean
-adding explicit title/IMDB-id/runtime fields plus a lookup-by-those
-endpoint) specifically because it needs no change here at all: the
-idempotency behavior above already does the work, once a client commits
-to deriving the id this way. See DemoFlex's own memory
-(`bookmark-data-model-and-sync`) for the concrete formula and the
-runtime-fingerprint sourcing (from DemoFlex's own library sync, not from
-ClipHanger's ffprobe pass — that data has to exist before the first
-job is ever submitted, not after).
+**Cross-device reuse without ClipHanger knowing what a "movie" is**
+(design decided 2026-08-22, **implemented 2026-08-24** in DemoFlex's own
+`ClipHangerMediaClient.swift` — direct report that prompted actually
+building it: deleting and re-adding the same bookmark, or even just
+tapping Generate twice, always redid the full extraction, never reused
+what ClipHanger already had): a second phone can discover media
+ClipHanger already generated for the same scene, with zero coordination
+and zero ClipHanger API changes, because the CLIENT derives `captureId`
+deterministically instead of randomly —
+`sha256(imdbId + tmdbId + timestamp + runtimeFingerprint + spanSeconds)`
+(DemoFlex's actual formula omits `fps`, since it never sends that field
+at all). Two devices with the same bookmark (same movie, same
+edition/encode, same scene) independently compute the identical id and
+just `GET /jobs/{that-id}`; if it's already Done, that's the "sync."
+This was chosen over teaching ClipHanger to understand movie/scene
+identity (a real alternative that was considered and rejected — it
+would mean adding explicit title/IMDB-id/runtime fields plus a
+lookup-by-those endpoint) specifically because it needed no change here
+at all — the idempotency behavior above already did the work, once a
+client committed to deriving the id this way, which is exactly what
+happened.
+
+**Known gap, not addressed**: `speedMultiplier` (see "Playback speed"
+below) is Setup-page-only, never sent by DemoFlex, so it can't go into
+this hash. A server-side speed-default change can leave a
+deterministic-id lookup silently returning a clip made under the old
+setting. `force: true` exists as an escape hatch; nothing calls it for
+this reason yet.
 
 ---
 
