@@ -7,7 +7,7 @@
 // TV-remote-input flow uses — appropriate here since the web UI runs in
 // a real browser, not a limited-input device.
 //
-// This is Framewright's first-ever call to plex.tv itself — everything
+// This is ClipHanger's first-ever call to plex.tv itself — everything
 // else this service does only ever talks to the media server on your
 // own LAN (docs/DECISIONS.md). Deliberately isolated in its own package
 // so that boundary stays visible and easy to audit, not folded into
@@ -33,7 +33,7 @@ import (
 
 // apiBase is a var, not a const, specifically so plexauth_test.go can
 // point it at an httptest.Server — this package's whole point is being
-// the one thing in Framewright that talks to plex.tv itself, so testing
+// the one thing in ClipHanger that talks to plex.tv itself, so testing
 // it for real (against a mock plex.tv, not the live one) matters more
 // here than almost anywhere else in the codebase.
 var (
@@ -64,10 +64,10 @@ type pinResponse struct {
 	AuthToken        string `json:"authToken"`
 }
 
-// CreatePin requests a new pin tied to clientIdentifier (Framewright's
+// CreatePin requests a new pin tied to clientIdentifier (ClipHanger's
 // own persisted identity — see store.Store.ClientIdentifier) and
 // returns a URL the user opens to approve it. product is shown to the
-// user on Plex's own consent screen ("Framewright wants to link this
+// user on Plex's own consent screen ("ClipHanger wants to link this
 // device").
 func CreatePin(ctx context.Context, clientIdentifier, product string) (Session, error) {
 	// strong=true as FORM BODY data, not a query param — confirmed live
@@ -231,7 +231,7 @@ func parseResources(body []byte) ([]resourceParsed, error) {
 
 // FetchServers lists the Plex Media Servers reachable on the signed-in
 // account, preferring each one's local (LAN) connection over a
-// relay/remote one — this only ever configures servers Framewright will
+// relay/remote one — this only ever configures servers ClipHanger will
 // reach directly over the LAN. clientIdentifier must be the same value
 // used for the pin (plex.tv ties resources to whichever identity is
 // asking).
@@ -251,8 +251,8 @@ func FetchServers(ctx context.Context, clientIdentifier, token string) ([]Discov
 	}
 	req.Header.Set("X-Plex-Client-Identifier", clientIdentifier)
 	req.Header.Set("X-Plex-Token", token)
-	req.Header.Set("X-Plex-Product", "Framewright")
-	req.Header.Set("X-Plex-Device-Name", "Framewright")
+	req.Header.Set("X-Plex-Product", "ClipHanger")
+	req.Header.Set("X-Plex-Device-Name", "ClipHanger")
 	// Deliberately no Accept: application/json — /resources doesn't
 	// reliably honor it (same finding DemoFlex's client independently
 	// made hitting this exact endpoint); XML is what actually comes

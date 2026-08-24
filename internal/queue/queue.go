@@ -15,18 +15,18 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/srinath/framewright/internal/backend"
-	"github.com/srinath/framewright/internal/extract"
-	"github.com/srinath/framewright/internal/model"
-	"github.com/srinath/framewright/internal/store"
+	"github.com/sreenathkc/cliphanger/internal/backend"
+	"github.com/sreenathkc/cliphanger/internal/extract"
+	"github.com/sreenathkc/cliphanger/internal/model"
+	"github.com/sreenathkc/cliphanger/internal/store"
 )
 
 // DefaultJobTimeout bounds one job's whole resolve+extract+probe
 // pipeline — a stuck ffmpeg process (a server that accepts the
 // connection but never sends data, say) would otherwise pin a worker
 // slot forever. Configurable (JOB_TIMEOUT_SECONDS env var, see
-// cmd/framewright/main.go) because how long is reasonable depends on
-// the network between Framewright and the media server — confirmed via
+// cmd/cliphanger/main.go) because how long is reasonable depends on
+// the network between ClipHanger and the media server — confirmed via
 // a real report: MKV streamed over a home LAN can take longer than 5
 // minutes to seek+encode a single short clip, since Matroska's own seek
 // index isn't always positioned as conveniently for a remote byte-range
@@ -36,7 +36,7 @@ const DefaultJobTimeout = 5 * time.Minute
 // DefaultRetention is a SUGGESTED value shown as placeholder text on
 // the Setup page's retention field — not the actual default anymore.
 // Retention started as an open question in docs/DECISIONS.md ("does
-// Framewright keep media forever or expire it?"), was first resolved as
+// ClipHanger keep media forever or expire it?"), was first resolved as
 // a bounded 72h cache, then changed again 2026-08-22 per direct
 // request ("by default forever, user can change in settings") — the
 // real default is now 0 (forever), read live from the store
@@ -71,7 +71,7 @@ type Queue struct {
 // parallel ffmpeg processes at 2-4. Each is a full decode, and the same
 // box may be serving media at the same time"). mediaDir is where
 // generated stills/clips are written; caller
-// (cmd/framewright/main.go) is responsible for it existing. jobTimeout
+// (cmd/cliphanger/main.go) is responsible for it existing. jobTimeout
 // <= 0 falls back to DefaultJobTimeout. Retention is NOT a parameter
 // here — see reapOnce, it's read live from the store on every sweep so
 // a Setup-page change takes effect without a restart.

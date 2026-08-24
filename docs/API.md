@@ -21,7 +21,7 @@ These four steps are a real sequence; each depends on the one before.
    acknowledgement. Nothing blocks.
 3. **Poll for state.** One request covers the whole queue.
 4. **Fetch lazily.** Media is pulled per capture when first needed.
-   Framewright is the store of record.
+   ClipHanger is the store of record.
 
 ---
 
@@ -33,7 +33,7 @@ Liveness plus enough state for a dashboard without a second call.
 
 ```json
 {
-  "service": "framewright",
+  "service": "cliphanger",
   "version": "0.1.0",
   "ffmpeg": "7.1",
   "servers": 2,

@@ -2,7 +2,7 @@
 # "arm64 is required, not optional. Synology ARM models, Raspberry Pis
 # and Apple Silicon dev machines are all arm64.") Build with:
 #
-#   docker buildx build --platform linux/amd64,linux/arm64 -t framewright .
+#   docker buildx build --platform linux/amd64,linux/arm64 -t cliphanger .
 #
 # Stage 1 compiles a static Go binary for whichever platform buildx is
 # targeting (TARGETOS/TARGETARCH are set automatically). Stage 2 is the
@@ -20,21 +20,21 @@ COPY internal ./internal
 ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /out/framewright ./cmd/framewright
+    go build -trimpath -ldflags="-s -w" -o /out/cliphanger ./cmd/cliphanger
 
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -u 1000 -m -s /usr/sbin/nologin framewright
-COPY --from=build /out/framewright /usr/local/bin/framewright
+RUN useradd -u 1000 -m -s /usr/sbin/nologin cliphanger
+COPY --from=build /out/cliphanger /usr/local/bin/cliphanger
 
 ENV DATA_DIR=/data
 ENV PORT=8420
 VOLUME /data
-RUN mkdir -p /data && chown framewright:framewright /data
-USER framewright
+RUN mkdir -p /data && chown cliphanger:cliphanger /data
+USER cliphanger
 
 EXPOSE 8420
-ENTRYPOINT ["/usr/local/bin/framewright"]
+ENTRYPOINT ["/usr/local/bin/cliphanger"]

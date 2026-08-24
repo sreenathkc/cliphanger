@@ -1,4 +1,4 @@
-// Framewright — self-hosted still/clip extraction for Plex, Kodi and
+// ClipHanger — self-hosted still/clip extraction for Plex, Kodi and
 // Jellyfin. See ../../CLAUDE.md and ../../docs/ before changing
 // anything structural.
 package main
@@ -15,11 +15,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/srinath/framewright/internal/api"
-	"github.com/srinath/framewright/internal/backend"
-	"github.com/srinath/framewright/internal/queue"
-	"github.com/srinath/framewright/internal/store"
-	"github.com/srinath/framewright/internal/web"
+	"github.com/sreenathkc/cliphanger/internal/api"
+	"github.com/sreenathkc/cliphanger/internal/backend"
+	"github.com/sreenathkc/cliphanger/internal/queue"
+	"github.com/sreenathkc/cliphanger/internal/store"
+	"github.com/sreenathkc/cliphanger/internal/web"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	st, err := store.Open(filepath.Join(dataDir, "framewright.json"))
+	st, err := store.Open(filepath.Join(dataDir, "cliphanger.json"))
 	if err != nil {
 		logger.Error("opening store", "error", err)
 		os.Exit(1)
@@ -82,13 +82,13 @@ func main() {
 		}
 	}
 
-	logger.Info("framewright starting", "port", port, "dataDir", dataDir, "workers", workers, "jobTimeout", jobTimeout, "retentionHours", st.RetentionHours())
+	logger.Info("cliphanger starting", "port", port, "dataDir", dataDir, "workers", workers, "jobTimeout", jobTimeout, "retentionHours", st.RetentionHours())
 	// The web UI itself is open by default now (2026-08-23 — see
 	// docs/DECISIONS.md "Web UI is open by default, not Basic-Auth-
 	// walled"), so this key is only ever needed by API CLIENTS (like
 	// DemoFlex), not for opening the web UI — printed in full here (not
 	// just a prefix) purely so a client's first-time setup doesn't need
-	// `docker exec ... cat /data/framewright.json` either. Find/rotate it
+	// `docker exec ... cat /data/cliphanger.json` either. Find/rotate it
 	// from the Setup page's API key section at any time.
 	logger.Info("API key ready — clients (like DemoFlex) use this in the X-Api-Key header; find or rotate it from the web UI's Setup page too", "apiKey", apiKey)
 

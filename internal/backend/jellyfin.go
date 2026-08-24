@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/srinath/framewright/internal/model"
+	"github.com/sreenathkc/cliphanger/internal/model"
 )
 
 // JellyfinBackend — UNVERIFIED against a live server, per

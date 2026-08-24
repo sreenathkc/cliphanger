@@ -1,4 +1,4 @@
-// Package api is Framewright's client-facing HTTP surface — exactly
+// Package api is ClipHanger's client-facing HTTP surface — exactly
 // what docs/API.md describes, nothing more. Every handler here assumes
 // requireAPIKey has already run; package web (the credential-owning
 // settings UI) is deliberately separate and never mounted under this
@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/srinath/framewright/internal/extract"
-	"github.com/srinath/framewright/internal/model"
-	"github.com/srinath/framewright/internal/queue"
-	"github.com/srinath/framewright/internal/store"
+	"github.com/sreenathkc/cliphanger/internal/extract"
+	"github.com/sreenathkc/cliphanger/internal/model"
+	"github.com/sreenathkc/cliphanger/internal/queue"
+	"github.com/sreenathkc/cliphanger/internal/store"
 )
 
 const version = "0.1.0"
@@ -86,7 +86,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	queued, running, failed := s.store.Counts()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"service": "framewright",
+		"service": "cliphanger",
 		"version": version,
 		"ffmpeg":  extract.Version(r.Context()),
 		"servers": len(s.store.ListServers()),

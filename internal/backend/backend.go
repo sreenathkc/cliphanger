@@ -1,6 +1,6 @@
-// Package backend is the ONLY part of Framewright that knows which
+// Package backend is the ONLY part of ClipHanger that knows which
 // media server it's talking to (CLAUDE.md: "this is the only part of
-// Framewright that knows which server it's talking to. Everything
+// ClipHanger that knows which server it's talking to. Everything
 // downstream sees a URL."). Each Backend turns a (Server, itemID) pair
 // into something ffmpeg can read directly; nothing above this package —
 // the queue, the extractor, the API — ever branches on ServerKind.
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srinath/framewright/internal/model"
+	"github.com/sreenathkc/cliphanger/internal/model"
 )
 
 // ResolvedSource is everything ffmpeg needs to read one item from one
@@ -64,7 +64,7 @@ type Backend interface {
 
 // LocalPath translates rawPath — the file path a media server ITSELF
 // reports for an item (Plex's Part.file, Kodi's movie `file` property,
-// Jellyfin's item Path) — into a path Framewright can read directly,
+// Jellyfin's item Path) — into a path ClipHanger can read directly,
 // using the server's optional LocalPathFrom/LocalPathTo prefix mapping.
 // Added 2026-08-22 as a scoped fallback for cases where a server's own
 // HTTP serving is confirmed not to work for a specific item (the
@@ -95,7 +95,7 @@ func newHTTPClient() *http.Client {
 }
 
 // registry maps ServerKind to the Backend that handles it — built once
-// in cmd/framewright/main.go and threaded through the queue.
+// in cmd/cliphanger/main.go and threaded through the queue.
 type Registry struct {
 	backends map[model.ServerKind]Backend
 }

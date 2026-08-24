@@ -1,3 +1,3 @@
-module github.com/srinath/framewright
+module github.com/sreenathkc/cliphanger
 
 go 1.23

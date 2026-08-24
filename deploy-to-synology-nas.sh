@@ -29,36 +29,36 @@
 #   3. Prints the resulting container status so you can see it's up.
 #
 # Requires: passwordless SSH key access to the NAS (see
-# ~/.ssh/framewright_nas_deploy on this Mac — its public half needs to
+# ~/.ssh/cliphanger_nas_deploy on this Mac — its public half needs to
 # be in the NAS user's ~/.ssh/authorized_keys), Docker/Container Manager
 # installed there already, and passwordless sudo for the docker binary
 # specifically (Synology's Docker package doesn't create a `docker`
 # group the way a typical Linux install does, so the deploy user can't
 # touch /var/run/docker.sock directly — confirmed 2026-08-22 against
 # this NAS). One-time setup for that last part, run once on the NAS:
-#   sudo sh -c 'echo "USERNAME ALL=(ALL) NOPASSWD: /usr/local/bin/docker" >> /etc/sudoers.d/framewright-deploy'
+#   sudo sh -c 'echo "USERNAME ALL=(ALL) NOPASSWD: /usr/local/bin/docker" >> /etc/sudoers.d/cliphanger-deploy'
 #
 # Usage:
 #   ./deploy-to-synology-nas.sh [user@host] [remote_path]
-#   ./deploy-to-synology-nas.sh you@192.168.1.50 /volume1/docker/framewright
+#   ./deploy-to-synology-nas.sh you@192.168.1.50 /volume1/docker/cliphanger
 #
-# Both arguments are optional if FRAMEWRIGHT_NAS_REMOTE (and optionally
-# FRAMEWRIGHT_NAS_PATH) are set in your OWN shell profile — not this
+# Both arguments are optional if CLIPHANGER_NAS_REMOTE (and optionally
+# CLIPHANGER_NAS_PATH) are set in your OWN shell profile — not this
 # file, which is checked into version control — so you can just run
 # `./deploy-to-synology-nas.sh` with no arguments day to day without
 # your NAS's host/user living in the repo:
-#   export FRAMEWRIGHT_NAS_REMOTE=you@192.168.1.50
-#   export FRAMEWRIGHT_NAS_PATH=/volume1/docker/framewright   # optional, this is the default
+#   export CLIPHANGER_NAS_REMOTE=you@192.168.1.50
+#   export CLIPHANGER_NAS_PATH=/volume1/docker/cliphanger   # optional, this is the default
 
 set -euo pipefail
 
-REMOTE="${1:-${FRAMEWRIGHT_NAS_REMOTE:-}}"
-REMOTE_PATH="${2:-${FRAMEWRIGHT_NAS_PATH:-/volume1/docker/framewright}}"
-SSH_KEY="$HOME/.ssh/framewright_nas_deploy"
+REMOTE="${1:-${CLIPHANGER_NAS_REMOTE:-}}"
+REMOTE_PATH="${2:-${CLIPHANGER_NAS_PATH:-/volume1/docker/cliphanger}}"
+SSH_KEY="$HOME/.ssh/cliphanger_nas_deploy"
 
 if [ -z "$REMOTE" ]; then
   echo "Usage: ./deploy-to-synology-nas.sh [user@host] [remote_path]" >&2
-  echo "   or: export FRAMEWRIGHT_NAS_REMOTE=you@your-nas-ip (in your own shell profile, not this repo)" >&2
+  echo "   or: export CLIPHANGER_NAS_REMOTE=you@your-nas-ip (in your own shell profile, not this repo)" >&2
   exit 1
 fi
 
@@ -102,7 +102,7 @@ echo "==> Building and (re)starting on the NAS — this runs the NAS's own Docke
 ssh_remote "cd '$REMOTE_PATH/app' && $DOCKER compose up -d --build"
 
 echo "==> Container status"
-ssh_remote "$DOCKER ps --filter name=framewright --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
+ssh_remote "$DOCKER ps --filter name=cliphanger --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
 
 echo
 echo "Done. Open http://<nas-ip>:8420 to finish setup (API key, media servers) if this is the first deploy."

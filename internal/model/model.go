@@ -7,7 +7,7 @@ package model
 
 import "time"
 
-// ServerKind is one of the three backends Framewright talks to. No
+// ServerKind is one of the three backends ClipHanger talks to. No
 // backend is privileged (CLAUDE.md's "no privileged backend" rule) —
 // this type exists purely to pick which Backend implementation resolves
 // a given Source, never to branch UI or API behavior by kind.
@@ -42,7 +42,7 @@ type Server struct {
 
 	// LocalPathFrom/LocalPathTo are an OPTIONAL prefix mapping — the
 	// same "remote path mapping" pattern *arr-stack tools use, since a
-	// media server's own view of a file's path and Framewright's view of
+	// media server's own view of a file's path and ClipHanger's view of
 	// that same file (if it happens to also have access, e.g. the same
 	// NAS share mounted separately) are usually rooted differently.
 	// Empty (the default) means no mapping is configured, and nothing
@@ -103,7 +103,7 @@ type Source struct {
 }
 
 // Job is one capture request end to end. CaptureID is chosen by the
-// CLIENT and is Framewright's idempotency key — see Store.SubmitJob.
+// CLIENT and is ClipHanger's idempotency key — see Store.SubmitJob.
 type Job struct {
 	CaptureID        string     `json:"captureId"`
 	Source           Source     `json:"source"`
@@ -130,7 +130,7 @@ type Job struct {
 // seconds", tracing back to a 3s job that never got the later 20s
 // default threaded through this constant). 20s matches the client-side
 // default DemoFlex itself now also sends explicitly on every submission
-// (see FramewrightMediaClient.swift) — this constant only still matters
+// (see ClipHangerMediaClient.swift) — this constant only still matters
 // as the fallback for any OTHER client that omits spanSeconds entirely.
 const (
 	DefaultSpanSeconds = 20

@@ -15,7 +15,7 @@ func generateAPIKey() (string, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generating API key: %w", err)
 	}
-	return "fw_" + hex.EncodeToString(buf), nil
+	return "ch_" + hex.EncodeToString(buf), nil
 }
 
 // generateServerID produces the srv_XXXX-shaped id used throughout
@@ -38,5 +38,5 @@ func generateClientIdentifier() (string, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generating client identifier: %w", err)
 	}
-	return "framewright-" + hex.EncodeToString(buf), nil
+	return "cliphanger-" + hex.EncodeToString(buf), nil
 }

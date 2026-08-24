@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/srinath/framewright/internal/model"
+	"github.com/sreenathkc/cliphanger/internal/model"
 )
 
 // KodiBackend — UNVERIFIED against a live server, per
@@ -146,7 +146,7 @@ func (b *KodiBackend) Resolve(ctx context.Context, server model.Server, itemID s
 				return ResolvedSource{}, fmt.Errorf(
 					"Kodi refused to serve %q (401) — this file is outside a configured Kodi SOURCE. "+
 						"Since Frodo, Kodi's webserver only serves paths inside a source; a file Kodi can PLAY is not necessarily one it will SERVE. "+
-						"Add the containing folder as a source in Kodi, check credentials if one is required, or configure a local path mapping for this server in Setup so Framewright can read the file directly.",
+						"Add the containing folder as a source in Kodi, check credentials if one is required, or configure a local path mapping for this server in Setup so ClipHanger can read the file directly.",
 					details.Result.MovieDetails.File,
 				)
 			}

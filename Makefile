@@ -1,10 +1,10 @@
 .PHONY: build run test vet fmt docker
 
 build:
-	go build -o bin/framewright ./cmd/framewright
+	go build -o bin/cliphanger ./cmd/cliphanger
 
 run: build
-	DATA_DIR=./data ./bin/framewright
+	DATA_DIR=./data ./bin/cliphanger
 
 test:
 	go test ./...
@@ -18,4 +18,4 @@ fmt:
 # Multi-arch, matching docs/DECISIONS.md. Requires `docker buildx create --use`
 # once per machine if you haven't already.
 docker:
-	docker buildx build --platform linux/amd64,linux/arm64 -t framewright:local --load .
+	docker buildx build --platform linux/amd64,linux/arm64 -t cliphanger:local --load .

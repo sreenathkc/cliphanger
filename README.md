@@ -1,4 +1,4 @@
-# Framewright
+# ClipHanger
 
 Extract stills and short clips from your media library at a given
 timestamp.
@@ -24,7 +24,7 @@ and `AVAssetImageGenerator` doesn't work against a transcoded HLS stream
 either. Browsers and embedded clients hit their own versions of the same
 wall. ffmpeg on an always-on box has none of these problems.
 
-Framewright does the work once, keeps the result, and hands it to
+ClipHanger does the work once, keeps the result, and hands it to
 whichever client asked — without that client ever touching a media
 server's credentials, a NAS mount, or a path translation.
 
@@ -35,7 +35,7 @@ server's credentials, a NAS mount, or a path translation.
    in by hand); Kodi and Jellyfin take a host and credentials directly.
    Credentials never leave the box.
 2. A client submits a batch of captures (`POST /jobs`) and walks away.
-3. Framewright asks the server where each file actually lives, streams
+3. ClipHanger asks the server where each file actually lives, streams
    it over HTTP, and runs ffmpeg — still + clip + an ffprobe pass, in
    one job.
 4. The client polls (`GET /jobs`), then fetches the still/clip it wants.
@@ -111,9 +111,9 @@ Unraid's Community Applications) become possible too — not yet.
   have it with `docker --version` in a terminal.
 - **Port 8420 free** on whichever machine will run it (or pick a
   different host port when you map it — see below).
-- **Network reachability**: the machine running Framewright needs to be
+- **Network reachability**: the machine running ClipHanger needs to be
   able to reach your Plex/Kodi/Jellyfin server(s) directly over your
-  LAN, and vice versa isn't needed at all — Framewright is the one that
+  LAN, and vice versa isn't needed at all — ClipHanger is the one that
   connects out, nothing connects in except a client using the API.
 
 ### Option 1: Docker Compose (recommended)
@@ -125,22 +125,22 @@ or just download the ZIP from GitHub's own "Code" button instead of
 using the `git clone` line below).
 
 ```bash
-git clone https://github.com/sreenathkc/framewright.git
-cd framewright
+git clone https://github.com/sreenathkc/cliphanger.git
+cd cliphanger
 docker compose up -d --build
 ```
 
 What each line does: the first downloads the source into a new
-`framewright` folder; the second moves into it; the third reads
+`cliphanger` folder; the second moves into it; the third reads
 `docker-compose.yml`, builds the container image from the `Dockerfile`
 in this repo, and starts it in the background (`-d`).
 
 The shipped `docker-compose.yml` uses host networking on Linux
 (`network_mode: host`) rather than a bridge + port mapping — see its own
-comments for why: under a bridge network, Framewright's outbound
+comments for why: under a bridge network, ClipHanger's outbound
 requests to a media server on the same LAN carry a Docker-internal
 source IP, which Plex doesn't recognize as local and fast-rejects with a
-500. Host networking makes Framewright indistinguishable from any other
+500. Host networking makes ClipHanger indistinguishable from any other
 process on the box — nothing else to configure. **Docker Desktop on
 macOS/Windows doesn't support host networking the same way** — if
 you're on one of those, open `docker-compose.yml` in a text editor
@@ -152,18 +152,18 @@ Once it's up, skip to **First-time setup** below.
 ### Option 2: Plain `docker run` (no compose file)
 
 Same result as Option 1, as one command, if you'd rather not use
-Compose at all. Run this from inside the cloned `framewright` folder:
+Compose at all. Run this from inside the cloned `cliphanger` folder:
 
 ```bash
-docker build -t framewright .
-docker run -d --name framewright \
+docker build -t cliphanger .
+docker run -d --name cliphanger \
   --network host \
   -v "$(pwd)/data:/data" \
   --restart unless-stopped \
-  framewright
+  cliphanger
 ```
 
-`docker build` compiles the image and tags it `framewright` so the next
+`docker build` compiles the image and tags it `cliphanger` so the next
 command can find it. `-d` runs it in the background; `--network host`
 is the same host-networking Compose uses (Linux only — on macOS/Windows
 replace it with `-p 8420:8420` instead); `-v "$(pwd)/data:/data"` is
@@ -197,8 +197,8 @@ plain SSH user can't run `docker` commands without that one-time step).
 Once set up:
 
 ```bash
-export FRAMEWRIGHT_NAS_REMOTE=you@192.168.1.50
-export FRAMEWRIGHT_NAS_PATH=/volume1/docker/framewright   # optional, this is the default
+export CLIPHANGER_NAS_REMOTE=you@192.168.1.50
+export CLIPHANGER_NAS_PATH=/volume1/docker/cliphanger   # optional, this is the default
 ./deploy-to-synology-nas.sh
 ```
 
@@ -209,7 +209,7 @@ image — see Status below). For now: open Unraid's own **Terminal** (top
 right of the web UI) and follow **Option 1** or **Option 2** above
 directly — Unraid ships Docker already, so nothing extra to install.
 Point the `-v` volume (or `docker-compose.yml`'s `volumes:` line) at a
-path under your array, e.g. `/mnt/user/appdata/framewright/data`, so it
+path under your array, e.g. `/mnt/user/appdata/cliphanger/data`, so it
 survives an Unraid reboot the same way any other app's appdata does.
 
 ### Option 5: Build and run without Docker at all
@@ -222,15 +222,15 @@ ffmpeg` (macOS), `apt install ffmpeg` (Debian/Ubuntu), or your distro's
 package manager — anything reasonably recent works.
 
 ```bash
-git clone https://github.com/sreenathkc/framewright.git
-cd framewright
-make build   # go build -o bin/framewright ./cmd/framewright
-make run     # DATA_DIR=./data ./bin/framewright
+git clone https://github.com/sreenathkc/cliphanger.git
+cd cliphanger
+make build   # go build -o bin/cliphanger ./cmd/cliphanger
+make run     # DATA_DIR=./data ./bin/cliphanger
 ```
 
 #### Why isn't ffmpeg bundled?
 
-Framewright shells out to a separately-installed ffmpeg rather than
+ClipHanger shells out to a separately-installed ffmpeg rather than
 compiling it in, because redistributing a compiled ffmpeg carries
 GPL/LGPL obligations that vary by exactly how it was built — see
 `docs/DECISIONS.md`. The Docker image already includes it (installed
@@ -255,10 +255,10 @@ However you installed it, the steps from here are the same:
    "Test connection" before saving.
 4. **Find your API key** on the same Setup page (under "API key") —
    this is what a client application (like DemoFlex) needs to actually
-   talk to Framewright. It's also printed in the container's logs on
-   first start: `docker logs framewright | grep "API key ready"`.
+   talk to ClipHanger. It's also printed in the container's logs on
+   first start: `docker logs cliphanger | grep "API key ready"`.
 
-That's it — Framewright is ready to accept jobs. See `docs/API.md` for
+That's it — ClipHanger is ready to accept jobs. See `docs/API.md` for
 what a client actually sends.
 
 ### Environment variables
@@ -296,7 +296,7 @@ curl -H "X-Api-Key: $KEY" http://your-host:8420/health
 
 - **DemoFlex** — an iOS app for browsing demo-worthy movie scenes and
   playing them on a home theatre. The first consumer, and the reason
-  this exists. Framewright knows nothing about it, and shouldn't — the
+  this exists. ClipHanger knows nothing about it, and shouldn't — the
   API is generic, not shaped around any one client.
 
 ## Status / roadmap

@@ -1,4 +1,4 @@
-# CLAUDE.md — Framewright
+# CLAUDE.md — ClipHanger
 
 Persistent context for whoever (human or model) builds this. **Nothing
 here has been implemented yet.** This folder is a design handoff, not a
@@ -10,9 +10,9 @@ before writing code.
 
 ## What this is
 
-Framewright is a **self-hosted service that extracts stills and short
+ClipHanger is a **self-hosted service that extracts stills and short
 clips from a media library at a given timestamp.** A client says "give
-me a still and a 3-second clip of item X at 1:35:00"; Framewright asks
+me a still and a 3-second clip of item X at 1:35:00"; ClipHanger asks
 the media server where that file lives, hands the URL to ffmpeg, and
 keeps the results until the client collects them.
 
@@ -53,7 +53,7 @@ client-chosen opaque `captureId`, not by anything with app semantics.
   confirmed failure condition to trigger on first — Plex and Jellyfin
   don't have one yet and shouldn't get this "just in case."
 - **Credentials never travel from a client.** Media-server credentials
-  are entered in Framewright's own web UI and stay on the box. Clients
+  are entered in ClipHanger's own web UI and stay on the box. Clients
   hold only an API key. There is deliberately no client-facing endpoint
   to set them.
 - **Never let a credential reach a log or an error string.** Plex tokens

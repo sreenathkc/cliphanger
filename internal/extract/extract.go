@@ -17,13 +17,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/srinath/framewright/internal/model"
+	"github.com/sreenathkc/cliphanger/internal/model"
 )
 
 // Source is what a backend.ResolvedSource looks like from this
 // package's side — extract doesn't import package backend (nothing
 // backend-specific belongs this deep; see that package's own header),
-// so cmd/framewright/main.go converts between the two shapes at the
+// so cmd/cliphanger/main.go converts between the two shapes at the
 // one call site that has both in scope.
 type Source struct {
 	URL            string
@@ -275,7 +275,7 @@ type probeStream struct {
 	} `json:"side_data_list"`
 }
 
-// Probe runs ffprobe against src and derives DemoFlex/Framewright's own
+// Probe runs ffprobe against src and derives DemoFlex/ClipHanger's own
 // MediaInfo shape from the raw output — this is "better data than any
 // server API gives" (SERVER-NOTES.md), which is the whole reason this
 // exists rather than trusting whatever the media server itself reports.

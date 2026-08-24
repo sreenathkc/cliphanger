@@ -24,12 +24,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/srinath/framewright/internal/backend"
-	"github.com/srinath/framewright/internal/extract"
-	"github.com/srinath/framewright/internal/model"
-	"github.com/srinath/framewright/internal/plexauth"
-	"github.com/srinath/framewright/internal/queue"
-	"github.com/srinath/framewright/internal/store"
+	"github.com/sreenathkc/cliphanger/internal/backend"
+	"github.com/sreenathkc/cliphanger/internal/extract"
+	"github.com/sreenathkc/cliphanger/internal/model"
+	"github.com/sreenathkc/cliphanger/internal/plexauth"
+	"github.com/sreenathkc/cliphanger/internal/queue"
+	"github.com/sreenathkc/cliphanger/internal/store"
 )
 
 //go:embed templates/*.html
@@ -62,7 +62,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) routes() {
 	// No root ("/") route here — this Server is mounted under /ui/ by
-	// cmd/framewright/main.go (via http.StripPrefix), which registers
+	// cmd/cliphanger/main.go (via http.StripPrefix), which registers
 	// its own top-level "/" → "/ui/setup" redirect instead. Registering
 	// one here too would only ever be reached at literal "/ui/", not
 	// the bare site root a browser actually opens.
@@ -205,7 +205,7 @@ func (s *Server) handleSetRetention(w http.ResponseWriter, r *http.Request) {
 // duration of the movie clip needs to be generated"). Applies to any
 // job that omits its own spanSeconds; a job that specifies one
 // explicitly (as DemoFlex itself always does) is unaffected — see
-// FramewrightMediaClient.swift. Bounded 1–120s: unbounded would let a
+// ClipHangerMediaClient.swift. Bounded 1–120s: unbounded would let a
 // value slip in that produces a multi-minute-long "preview" clip, which
 // is not what this feature is for.
 func (s *Server) handleSetClipDuration(w http.ResponseWriter, r *http.Request) {
@@ -289,7 +289,7 @@ func (s *Server) handleCreatePlexPin(w http.ResponseWriter, r *http.Request) {
 		writeWebJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	session, err := plexauth.CreatePin(r.Context(), clientID, "Framewright")
+	session, err := plexauth.CreatePin(r.Context(), clientID, "ClipHanger")
 	if err != nil {
 		writeWebJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -470,7 +470,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"Retention":      retention,
 		"Servers":        s.store.ListServers(),
 		"Health": map[string]interface{}{
-			"Service": "framewright", "Version": "0.1.0",
+			"Service": "cliphanger", "Version": "0.1.0",
 			"FFmpeg": extract.Version(r.Context()),
 			"Queued": queued, "Running": running, "Failed": failed,
 		},

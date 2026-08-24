@@ -9,7 +9,7 @@ response body when a decode fails rather than a bare error.
 
 ## Resolving a streamable URL
 
-This is the only part of Framewright that knows which server it's
+This is the only part of ClipHanger that knows which server it's
 talking to. Everything downstream sees a URL.
 
 ### Plex — CONFIRMED against a live server
@@ -57,7 +57,7 @@ http://HOST:8080/vfs/{percent-encoded file path}
    auth problem and sends you chasing the wrong thing. Say so in the job
    error rather than surfacing a bare 401.
 
-**Performance:** bytes travel NAS → Kodi box → Framewright. If the Kodi
+**Performance:** bytes travel NAS → Kodi box → ClipHanger. If the Kodi
 box is a Shield on wireless, that hop is the bottleneck, not ffmpeg.
 
 Auth is HTTP Basic, optional. `http://user:pass@HOST:8080/vfs/...` works
@@ -148,7 +148,7 @@ decode, and the same box may be serving media at the same time.
 
 ## Media info via ffprobe
 
-Framewright has the file open anyway, so probing is nearly free — and it
+ClipHanger has the file open anyway, so probing is nearly free — and it
 is **better data than any server API gives**.
 
 ```
@@ -181,7 +181,7 @@ Plex reports, and the reliable way to tell two cuts or editions apart.
 
 ## What the servers themselves expose
 
-For reference — this is what a client would get *without* Framewright,
+For reference — this is what a client would get *without* ClipHanger,
 and why ffprobe is worth doing.
 
 | | Resolution / HDR | Channels | Atmos / DTS:X |

@@ -51,13 +51,13 @@ write a second client without reading DemoFlex's source.
 ffmpeg opens an HTTP URL as happily as a file. Streaming from the media
 server means:
 
-- No NAS mount on the Framewright host.
+- No NAS mount on the ClipHanger host.
 - No path translation between what the server sees and what the host
   sees (drive letters, permissions, differing mount points).
 - It works no matter which machine it runs on.
 
 The trade-off is one extra network hop, which matters most for Kodi (see
-`SERVER-NOTES.md` — bytes travel NAS → Kodi box → Framewright).
+`SERVER-NOTES.md` — bytes travel NAS → Kodi box → ClipHanger).
 
 **Narrow exception added 2026-08-22** — a server can optionally
 configure `LocalPathFrom`/`LocalPathTo` (a prefix mapping, the same
@@ -143,22 +143,22 @@ the mandatory wall, not building session-based auth.
 
 Extraction takes seconds to minutes. Clients submit a batch, get an
 immediate acknowledgement, and poll later; media is fetched lazily per
-capture rather than pushed. Framewright is the store of record.
+capture rather than pushed. ClipHanger is the store of record.
 
 `captureId` doubles as the idempotency key, so a client can re-send its
 entire list on every startup without tracking what it already asked for.
 
-**Cross-device reuse without Framewright knowing what a "movie" is
+**Cross-device reuse without ClipHanger knowing what a "movie" is
 (design decided 2026-08-22, not yet implemented — DemoFlex's own
-Framewright client doesn't exist yet):** a second phone can discover
-media Framewright already generated for the same scene, with zero
-coordination and zero Framewright API changes, if the CLIENT derives
+ClipHanger client doesn't exist yet):** a second phone can discover
+media ClipHanger already generated for the same scene, with zero
+coordination and zero ClipHanger API changes, if the CLIENT derives
 `captureId` deterministically instead of randomly — e.g.
 `sha256(imdbId + timestamp + runtimeFingerprint + spanSeconds + fps)`.
 Two devices with the same bookmark (same movie, same edition/encode,
 same scene) then independently compute the identical id and just
 `GET /jobs/{that-id}`; if it's already Done, that's the "sync." This
-was chosen over teaching Framewright to understand movie/scene identity
+was chosen over teaching ClipHanger to understand movie/scene identity
 (a real alternative that was considered and rejected — it would mean
 adding explicit title/IMDB-id/runtime fields plus a lookup-by-those
 endpoint) specifically because it needs no change here at all: the
@@ -166,7 +166,7 @@ idempotency behavior above already does the work, once a client commits
 to deriving the id this way. See DemoFlex's own memory
 (`bookmark-data-model-and-sync`) for the concrete formula and the
 runtime-fingerprint sourcing (from DemoFlex's own library sync, not from
-Framewright's ffprobe pass — that data has to exist before the first
+ClipHanger's ffprobe pass — that data has to exist before the first
 job is ever submitted, not after).
 
 ---
@@ -243,14 +243,14 @@ touched regardless of age. A user who wants the original bounded-cache
 behavior can still set a number of hours; forever is now just the
 starting point, not a fixed architectural stance — the underlying
 reasoning (clients are expected to keep their own durable copy;
-Framewright doesn't need to hold a result forever to be useful) still
+ClipHanger doesn't need to hold a result forever to be useful) still
 applies for anyone who chooses to turn it on.
 
 ---
 
 ## Naming
 
-**Framewright** — a wright makes things (playwright, shipwright); this
+**ClipHanger** — a wright makes things (playwright, shipwright); this
 makes frames.
 
 *Sprocket* was the other strong candidate and was **ruled out**: it is

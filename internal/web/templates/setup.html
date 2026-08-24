@@ -18,7 +18,7 @@
 <div class="card">
   <p class="muted" style="margin-top:0">
     How long a finished job's still/clip and record stick around before being deleted automatically.
-    Framewright keeps everything <strong>forever by default</strong> — set a number of hours here only if you
+    ClipHanger keeps everything <strong>forever by default</strong> — set a number of hours here only if you
     want old jobs cleaned up on their own. Takes effect immediately, no restart needed.
   </p>
   <form method="post" action="/ui/setup/retention">
@@ -96,7 +96,7 @@
 
     <div id="field-plex">
       <p class="hint">
-        Click below, log into Plex in the tab that opens, and approve access. Framewright picks up the resulting
+        Click below, log into Plex in the tab that opens, and approve access. ClipHanger picks up the resulting
         token <strong>and</strong> your server's host/port automatically — nothing to find, copy, paste or type.
       </p>
       <div class="row" style="justify-content:flex-start; gap:12px">
@@ -149,22 +149,22 @@
       <input type="password" name="kodiPassword" id="kodiPassword">
       <p class="hint">
         <strong>Optional fallback for the "outside a configured source" problem above.</strong> If Kodi's web
-        server refuses to serve a file (401) because it's outside a source, and Framewright happens to have its
+        server refuses to serve a file (401) because it's outside a source, and ClipHanger happens to have its
         own access to the same media (e.g. the same NAS share mounted separately), it can read the file directly
         instead of giving up — but only for that one situation; every other item still goes through Kodi normally.
         Fill in the two paths below only if you want this fallback: the path prefix <em>as Kodi's own library
-        reports it</em>, and the prefix Framewright should replace it with. Leave both blank to skip this — nothing
+        reports it</em>, and the prefix ClipHanger should replace it with. Leave both blank to skip this — nothing
         changes if you do.
       </p>
       <label for="localPathFrom">Kodi's path prefix (optional)</label>
       <input type="text" name="localPathFrom" id="localPathFrom" class="mono" placeholder="/movies">
-      <label for="localPathTo">Framewright's path prefix (optional)</label>
+      <label for="localPathTo">ClipHanger's path prefix (optional)</label>
       <input type="text" name="localPathTo" id="localPathTo" class="mono" placeholder="/mnt/nas/Movies">
     </div>
     <div id="field-jellyfin" style="display:none">
       <p class="hint">
         In Jellyfin, go to <strong>Dashboard → API Keys</strong>, click <strong>+</strong>, give it a name like
-        "Framewright", and paste the key it generates below. Unlike Plex, this key is scoped to the server admin
+        "ClipHanger", and paste the key it generates below. Unlike Plex, this key is scoped to the server admin
         who created it and can be revoked from that same page at any time.
       </p>
       <label for="jellyfinToken">Jellyfin API key</label>
