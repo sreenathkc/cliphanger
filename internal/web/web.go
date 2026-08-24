@@ -17,7 +17,9 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,6 +36,45 @@ import (
 
 //go:embed templates/*.html
 var templateFS embed.FS
+
+// staticFS holds the favicon/PWA-manifest bundle (2026-08-24) —
+// favicon.io's standard export set. See RegisterStaticAssets for why
+// these are served from bare root paths rather than nested under this
+// package's own /ui/ routes.
+//
+//go:embed static/*
+var staticFS embed.FS
+
+// RegisterStaticAssets mounts the favicon/manifest bundle onto mux at
+// bare root paths — browsers request /favicon.ico (and a manifest's own
+// icon entries) unprefixed, regardless of where the HTML page
+// referencing them actually lives, so these can't nest under /ui/ the
+// way the rest of this package's routes do. Called directly against the
+// TOP-LEVEL mux in cmd/cliphanger/main.go, not this package's own
+// sub-mux — see main.go's routes() comment for the /ui/ vs bare-path
+// split this already follows.
+func RegisterStaticAssets(mux *http.ServeMux) {
+	// Go's mime package has no built-in mapping for .webmanifest, so
+	// http.FileServerFS falls back to content-sniffing it as
+	// text/plain — technically wrong (the Web App Manifest spec calls
+	// for application/manifest+json) and enough to make some browsers/
+	// PWA install prompts ignore it. Registering it process-wide fixes
+	// FileServerFS's lookup for every request, not just the first.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(err) // embedded at compile time — can't fail at runtime
+	}
+	fileServer := http.FileServerFS(sub)
+	for _, name := range []string{
+		"/favicon.ico", "/favicon.svg", "/favicon-96x96.png",
+		"/apple-touch-icon.png", "/web-app-manifest-192x192.png",
+		"/web-app-manifest-512x512.png", "/site.webmanifest",
+	} {
+		mux.Handle("GET "+name, fileServer)
+	}
+}
 
 type Server struct {
 	store    *store.Store

@@ -118,6 +118,10 @@ func main() {
 	top.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/setup", http.StatusFound)
 	})
+	// Favicon/PWA-manifest bundle, also at bare root paths for the same
+	// reason the API sits there — a browser requests /favicon.ico
+	// unprefixed no matter what page referenced it (2026-08-24).
+	web.RegisterStaticAssets(top)
 	top.Handle("/ui/", http.StripPrefix("/ui", webServer))
 	top.Handle("/", apiServer)
 
