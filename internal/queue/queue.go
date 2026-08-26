@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/sreenathkc/cliphanger/internal/backend"
@@ -56,43 +57,47 @@ type Queue struct {
 	store      *store.Store
 	registry   *backend.Registry
 	mediaDir   string
-	numWorkers int
 	jobTimeout time.Duration
 	logger     *slog.Logger
 	liveLogs   *liveLogRegistry
+	// running is how many jobs are actively executing right now —
+	// checked against the LIVE store.MaxConcurrentJobs() limit before a
+	// worker claims new work (see worker's own comment). Not the same
+	// thing as goroutine count any more: model.MaxConcurrentJobsCeiling
+	// worker goroutines are always running (see Run), but only up to
+	// the live limit of them are ever doing real work at once.
+	running atomic.Int32
 }
 
-// New — numWorkers is also the max-simultaneous-jobs cap: each worker
-// only ever has one job (one ffmpeg process) running at a time, so this
-// number IS the concurrency limit, not just a thread-pool size
-// (confirmed 2026-08-22, per direct request for a configurable "max
-// simultaneous jobs" setting — WORKERS already was that, just under a
-// name that didn't say so). Clamped 1-4 (docs/SERVER-NOTES.md: "cap
-// parallel ffmpeg processes at 2-4. Each is a full decode, and the same
-// box may be serving media at the same time"). mediaDir is where
-// generated stills/clips are written; caller
-// (cmd/cliphanger/main.go) is responsible for it existing. jobTimeout
-// <= 0 falls back to DefaultJobTimeout. Retention is NOT a parameter
-// here — see reapOnce, it's read live from the store on every sweep so
-// a Setup-page change takes effect without a restart.
-func New(st *store.Store, registry *backend.Registry, mediaDir string, numWorkers int, jobTimeout time.Duration, logger *slog.Logger) *Queue {
-	if numWorkers < 1 {
-		numWorkers = 1
-	}
-	if numWorkers > 4 {
-		numWorkers = 4
-	}
+// New — concurrency is NOT a parameter here (2026-08-26, replacing the
+// old fixed numWorkers) — see Store.MaxConcurrentJobs's own comment for
+// why a value fixed once at startup, with no hardware awareness, was
+// exactly what produced a real slowdown report. It's read LIVE from the
+// store on every worker loop iteration instead, same pattern retention
+// already used (reapOnce) — a Setup-page change takes effect on the
+// very next job pull, no restart needed. mediaDir is where generated
+// stills/clips are written; caller (cmd/cliphanger/main.go) is
+// responsible for it existing. jobTimeout <= 0 falls back to
+// DefaultJobTimeout.
+func New(st *store.Store, registry *backend.Registry, mediaDir string, jobTimeout time.Duration, logger *slog.Logger) *Queue {
 	if jobTimeout <= 0 {
 		jobTimeout = DefaultJobTimeout
 	}
-	return &Queue{store: st, registry: registry, mediaDir: mediaDir, numWorkers: numWorkers, jobTimeout: jobTimeout, logger: logger, liveLogs: newLiveLogRegistry()}
+	return &Queue{store: st, registry: registry, mediaDir: mediaDir, jobTimeout: jobTimeout, logger: logger, liveLogs: newLiveLogRegistry()}
 }
 
-// Run blocks until ctx is cancelled, running numWorkers worker
-// goroutines that each poll the store for queued work.
+// Run blocks until ctx is cancelled. Always starts
+// model.MaxConcurrentJobsCeiling polling goroutines — the most jobs
+// that could EVER be allowed to run at once — but each one gates
+// itself against the LIVE store.MaxConcurrentJobs() limit before
+// claiming work (see worker's own comment), so the number actually
+// running in parallel at any moment can be anywhere from 1 up to that
+// ceiling and can change at any time via the Setup page. This is
+// simpler and race-safer than trying to grow/shrink the goroutine pool
+// itself to match a changing live value.
 func (q *Queue) Run(ctx context.Context) {
 	done := make(chan struct{})
-	for i := 0; i < q.numWorkers; i++ {
+	for i := 0; i < model.MaxConcurrentJobsCeiling; i++ {
 		go q.worker(ctx, i, done)
 	}
 	// Always runs, unlike the old fixed-at-startup version — reapOnce
@@ -101,7 +106,7 @@ func (q *Queue) Run(ctx context.Context) {
 	// can change at any time via the Setup page.
 	go q.reapLoop(ctx)
 	<-ctx.Done()
-	for i := 0; i < q.numWorkers; i++ {
+	for i := 0; i < model.MaxConcurrentJobsCeiling; i++ {
 		<-done
 	}
 }
@@ -150,8 +155,31 @@ func (q *Queue) worker(ctx context.Context, id int, done chan<- struct{}) {
 		default:
 		}
 
+		// Claim a running-slot optimistically, then check whether that
+		// put it over the LIVE limit — not "check then increment",
+		// which would let two workers both see room for one more job
+		// and both proceed (a genuine race: q.running.Load() and the
+		// eventual q.running.Add(1) aren't one atomic operation).
+		// Increment-then-verify is race-safe: worst case, two workers
+		// both increment past the limit at once and BOTH back off this
+		// cycle even though one slot was really free — a wasted second
+		// of idle, self-correcting on the very next loop iteration.
+		// That's a far better trade for a soft performance guideline
+		// than silently running more parallel ffmpeg decodes than
+		// configured, which is the actual bug being fixed here.
+		if int(q.running.Add(1)) > q.store.MaxConcurrentJobs() {
+			q.running.Add(-1)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+			}
+			continue
+		}
+
 		job, ok := q.store.NextQueued()
 		if !ok {
+			q.running.Add(-1)
 			// Nothing to do — a fixed short poll interval is plenty for
 			// a self-hosted tool serving a handful of clients; no
 			// pub/sub needed for this scale.
@@ -166,6 +194,7 @@ func (q *Queue) worker(ctx context.Context, id int, done chan<- struct{}) {
 		jobCtx, cancel := context.WithTimeout(ctx, q.jobTimeout)
 		q.process(jobCtx, job)
 		cancel()
+		q.running.Add(-1)
 	}
 }
 
@@ -196,7 +225,13 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 
 	server, ok := q.store.GetServer(job.Source.ServerID)
 	if !ok {
-		fail(fmt.Errorf("server %q is not configured (it may have been removed after this job was submitted)", job.Source.ServerID))
+		// Wording covers both real causes evenly (2026-08-26) — this
+		// used to only mention "removed after submission," but package
+		// api no longer rejects an unknown serverId before a job is
+		// even created (see handleSubmitJobs's own comment), so "never
+		// configured in the first place" is now the more common case
+		// reaching here, not the rarer one.
+		fail(fmt.Errorf("server %q is not configured — add it on the Setup page (it may never have been added, or was removed after this job was submitted)", job.Source.ServerID))
 		return
 	}
 

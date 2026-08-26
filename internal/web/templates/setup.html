@@ -2,97 +2,6 @@
 <h1>Setup</h1>
 <p class="lede">Add your Plex, Kodi or Jellyfin servers here. Credentials stay on this box — clients never see them.</p>
 
-<h2>API key</h2>
-<div class="card">
-  <p class="muted" style="margin-top:0">Clients (like DemoFlex) send this in the <span class="mono">X-Api-Key</span> header. Rotating it immediately locks out anyone using the old one.</p>
-  <div class="keybox">
-    <code class="mono" id="apiKeyValue" style="flex:1; word-break:break-all;">{{.APIKey}}</code>
-    <button type="button" class="secondary copy-btn" onclick="copyField('apiKeyValue', this)" title="Copy API key" aria-label="Copy API key">⧉</button>
-  </div>
-  <form method="post" action="/ui/setup/apikey/rotate" style="margin-top:10px" onsubmit="return confirm('Rotate the API key? Every client using the current one will stop working until it is updated.')">
-    <button type="submit" class="secondary">Rotate key</button>
-  </form>
-</div>
-
-<h2>Retention</h2>
-<div class="card">
-  <p class="muted" style="margin-top:0">
-    How long a finished job's still/clip and record stick around before being deleted automatically.
-    ClipHanger keeps everything <strong>forever by default</strong> — set a number of hours here only if you
-    want old jobs cleaned up on their own. Takes effect immediately, no restart needed.
-  </p>
-  <form method="post" action="/ui/setup/retention">
-    <div class="row" style="gap:8px; align-items:flex-end">
-      <div style="flex:1">
-        <label for="retentionHours" style="margin:0">Hours (0 = forever)</label>
-        <input type="number" name="retentionHours" id="retentionHours" min="0" value="{{.RetentionHours}}" placeholder="0">
-      </div>
-      <button type="submit">Save</button>
-    </div>
-  </form>
-</div>
-
-<h2>Clip duration</h2>
-<div class="card">
-  <p class="muted" style="margin-top:0">
-    How long a generated clip runs, for any job that doesn't specify its own <span class="mono">spanSeconds</span>
-    (DemoFlex always sends its own, so this only matters for other/manual clients). A clip is a plain H.264
-    encode — no cross-frame trickery — so file size scales roughly linearly with duration.
-  </p>
-  <form method="post" action="/ui/setup/clip-duration">
-    <div class="row" style="gap:8px; align-items:flex-end">
-      <div style="flex:1">
-        <label for="clipDurationSeconds" style="margin:0">Seconds (1–120)</label>
-        <div class="row" style="gap:10px; align-items:center; margin-top:4px">
-          <input type="range" id="clipDurationSecondsRange" min="1" max="120"
-                 value="{{.DefaultSpanSeconds}}" oninput="syncClipDuration(this.value)" style="flex:1">
-          <input type="number" name="clipDurationSeconds" id="clipDurationSeconds" min="1" max="120"
-                 value="{{.DefaultSpanSeconds}}" oninput="syncClipDuration(this.value)" style="width:70px">
-        </div>
-        <p class="muted" id="clipSizeEstimate" style="margin:6px 0 0"></p>
-      </div>
-      <button type="submit">Save</button>
-    </div>
-  </form>
-</div>
-
-<h2>Playback speed</h2>
-<div class="card">
-  <p class="muted" style="margin-top:0">
-    Plays back MORE of the scene in the same clip duration, by reading extra source and
-    compressing its timeline — at 2x, a 20s clip actually covers 40s of the scene. A
-    demo-worthy moment can run a few minutes; 1x only ever shows a short slice of it.
-    Unlike clip duration above, DemoFlex doesn't send its own speed on a job — this
-    setting is the only thing that controls it, for every client.
-  </p>
-  <form method="post" action="/ui/setup/speed-multiplier">
-    <div class="row" style="gap:8px; align-items:flex-end">
-      <div style="flex:1">
-        <label for="speedMultiplier" style="margin:0">Speed (1&ndash;8x)</label>
-        <div class="row" style="gap:10px; align-items:center; margin-top:4px">
-          <input type="range" id="speedMultiplierRange" min="1" max="8"
-                 value="{{.DefaultSpeedMultiplier}}" oninput="syncSpeedMultiplier(this.value)" style="flex:1">
-          <input type="number" name="speedMultiplier" id="speedMultiplier" min="1" max="8"
-                 value="{{.DefaultSpeedMultiplier}}" oninput="syncSpeedMultiplier(this.value)" style="width:70px">
-        </div>
-        <p class="muted" id="speedExplainer" style="margin:6px 0 0"></p>
-      </div>
-      <button type="submit">Save</button>
-    </div>
-  </form>
-</div>
-
-<h2>ffmpeg command preview</h2>
-<div class="card">
-  <p class="muted" style="margin-top:0">
-    The actual command a job runs, given the clip duration and speed settings above —
-    read-only for now (may become an editable advanced mode later).
-    <span class="mono">&lt;...&gt;</span> marks the parts that vary per job (source URL,
-    timestamp, output path).
-  </p>
-  <pre class="mono" id="ffmpegPreview" style="white-space:pre-wrap; word-break:break-all; background:var(--sunk); border:1px solid var(--border); border-radius:8px; padding:12px; margin:0; font-size:12px; line-height:1.6;"></pre>
-</div>
-
 <h2>Media servers</h2>
 {{range .Servers}}
 <div class="card">
@@ -108,10 +17,10 @@
   <div class="row" style="margin-top:12px">
     <span class="muted">{{if not .LastCheckedAt.IsZero}}Last checked {{.LastCheckedAt.Format "Jan 2 15:04"}}{{else}}Never checked{{end}}</span>
     <div class="row" style="gap:8px; width:auto">
-      <form class="inline" method="post" action="/ui/setup/servers/{{.ID}}/test">
+      <form class="inline" method="post" action="/ui/setup/servers/{{.ID}}/test" onsubmit="submitFormSecurely(event, this); return false;">
         <button type="submit" class="secondary">Test connection</button>
       </form>
-      <form class="inline" method="post" action="/ui/setup/servers/{{.ID}}/delete" onsubmit="return confirm('Remove {{.Name}}? Jobs already submitted against it will start failing.')">
+      <form class="inline" method="post" action="/ui/setup/servers/{{.ID}}/delete" onsubmit="if (!confirm('Remove {{.Name}}? Jobs already submitted against it will start failing.')) return false; submitFormSecurely(event, this); return false;">
         <button type="submit" class="danger">Remove</button>
       </form>
     </div>
@@ -123,7 +32,7 @@
 
 <h2>Add a server</h2>
 <div class="card">
-  <form method="post" action="/ui/setup/servers">
+  <form method="post" action="/ui/setup/servers" onsubmit="submitFormSecurely(event, this); return false;">
     <label for="kind">Kind</label>
     <select name="kind" id="kind" onchange="updateFields(this.value)">
       <option value="plex">Plex</option>
@@ -217,21 +126,134 @@
   </form>
 </div>
 
+<h2>Retention</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    How long a finished job's still/clip and record stick around before being deleted automatically.
+    ClipHanger keeps everything <strong>forever by default</strong> — set a number of hours here only if you
+    want old jobs cleaned up on their own. Takes effect immediately, no restart needed.
+  </p>
+  <form method="post" action="/ui/setup/retention" onsubmit="submitFormSecurely(event, this); return false;">
+    <div class="row" style="gap:8px; align-items:flex-end">
+      <div style="flex:1">
+        <label for="retentionHours" style="margin:0">Hours (0 = forever)</label>
+        <input type="number" name="retentionHours" id="retentionHours" min="0" value="{{.RetentionHours}}" placeholder="0">
+      </div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<h2>Concurrency</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    How many jobs ClipHanger runs at once. Each one is a full ffmpeg decode, and this box may be
+    serving media at the same time — running more jobs in parallel doesn't mean more finish
+    sooner, it can just mean every job gets a smaller slice of the same CPU and takes longer.
+    <strong>Auto by default</strong> — picks a limit from this host's CPU count. Takes effect on
+    the next job pulled off the queue, no restart needed.
+  </p>
+  <form method="post" action="/ui/setup/max-concurrent-jobs" onsubmit="submitFormSecurely(event, this); return false;">
+    <div class="row" style="gap:8px; align-items:flex-end">
+      <div style="flex:1">
+        <label for="maxConcurrentJobs" style="margin:0">
+          Jobs (blank/0 = Auto{{if .MaxConcurrentJobsIsAuto}}, currently {{.MaxConcurrentJobs}}{{end}}, max {{.MaxConcurrentJobsCeiling}})
+        </label>
+        <input type="number" name="maxConcurrentJobs" id="maxConcurrentJobs" min="0" max="{{.MaxConcurrentJobsCeiling}}"
+               value="{{if not .MaxConcurrentJobsIsAuto}}{{.MaxConcurrentJobs}}{{end}}" placeholder="Auto">
+      </div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<h2>Clip duration</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    How long a generated clip runs, for any job that doesn't specify its own <span class="mono">spanSeconds</span>.
+    A clip is a plain H.264 encode with no inter-frame compression, so file size scales roughly linearly with
+    duration.
+  </p>
+  <form method="post" action="/ui/setup/clip-duration" onsubmit="submitFormSecurely(event, this); return false;">
+    <div class="row" style="gap:8px; align-items:flex-end">
+      <div style="flex:1">
+        <label for="clipDurationSeconds" style="margin:0">Seconds (1–120)</label>
+        <div class="row" style="gap:10px; align-items:center; margin-top:4px">
+          <input type="range" id="clipDurationSecondsRange" min="1" max="120"
+                 value="{{.DefaultSpanSeconds}}" oninput="syncClipDuration(this.value)" style="flex:1">
+          <input type="number" name="clipDurationSeconds" id="clipDurationSeconds" min="1" max="120"
+                 value="{{.DefaultSpanSeconds}}" oninput="syncClipDuration(this.value)" style="width:70px">
+        </div>
+        <p class="muted" id="clipSizeEstimate" style="margin:6px 0 0"></p>
+      </div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<h2>Playback speed</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    Plays back more of the scene in the same clip duration, by reading extra source and
+    compressing its timeline — at 2x, a 20s clip actually covers 40s of the scene. A longer,
+    meaningful moment can run a few minutes; 1x only shows a short slice of it. Unlike clip
+    duration above, no client sends its own speed value on a job — this setting controls it
+    for every client.
+  </p>
+  <form method="post" action="/ui/setup/speed-multiplier" onsubmit="submitFormSecurely(event, this); return false;">
+    <div class="row" style="gap:8px; align-items:flex-end">
+      <div style="flex:1">
+        <label for="speedMultiplier" style="margin:0">Speed (1&ndash;8x)</label>
+        <div class="row" style="gap:10px; align-items:center; margin-top:4px">
+          <input type="range" id="speedMultiplierRange" min="1" max="8"
+                 value="{{.DefaultSpeedMultiplier}}" oninput="syncSpeedMultiplier(this.value)" style="flex:1">
+          <input type="number" name="speedMultiplier" id="speedMultiplier" min="1" max="8"
+                 value="{{.DefaultSpeedMultiplier}}" oninput="syncSpeedMultiplier(this.value)" style="width:70px">
+        </div>
+        <p class="muted" id="speedExplainer" style="margin:6px 0 0"></p>
+      </div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<h2>ffmpeg command preview</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    The actual command a job runs, given the clip duration and speed settings above.
+    <span class="mono">&lt;...&gt;</span> marks the parts that vary per job (source URL,
+    timestamp, output path).
+  </p>
+  <pre class="mono" id="ffmpegPreview" style="white-space:pre-wrap; word-break:break-all; background:var(--sunk); border:1px solid var(--border); border-radius:8px; padding:12px; margin:0; font-size:12px; line-height:1.6;"></pre>
+</div>
+
 <script>
   // Clip-duration slider + number field, kept in sync, plus a live
   // estimated-file-size hint (2026-08-23, per direct request: "give a
-  // hint about average clip file size for the selected duration"). No
-  // server round trip — the estimate is a rough constant (~6.5 KB per
-  // second, derived from real captures at the default 480px/10fps
-  // encode) rather than an exact prediction, which content-dependent
-  // compression can never really give anyway; the hint says so.
-  const CLIP_KB_PER_SECOND = 6.5;
+  // hint about average clip file size for the selected duration").
+  //
+  // EXACT, not a rough guess, as of 2026-08-24 (per direct report — "a
+  // 1080 movie and a 4k UHD HDR movie... ideally both format should
+  // generate same file output"): extract.Clip switched from CRF
+  // (content-dependent, spends however many bits a scene needs — real
+  // spread seen on this box, two SDR sources at identical settings
+  // landed 186829 and 1194204 bytes) to a fixed TARGET_BITRATE_KBPS,
+  // so size is now just spanSeconds × bitrate ÷ 8 — no more "busier or
+  // grainier scenes encode larger" caveat, because that's no longer
+  // true. Keep this in sync with extract.go's own targetBitrateKbps by
+  // hand (see updateFfmpegPreview's own comment on why this whole
+  // preview is a hand-kept copy, not shared code).
+  const TARGET_BITRATE_KBPS = 200;
+  const TARGET_KB_PER_SECOND = TARGET_BITRATE_KBPS / 8;
   const DEFAULT_FPS = {{.DefaultFPS}};
 
-  // Mirrors extract.Clip's own filter chain exactly (2026-08-24) — see
-  // that function's header for why setpts has to come before fps in the
-  // chain. This is a hand-kept copy, not shared code with the Go side
-  // (a read-only preview didn't seem worth plumbing a shared-source
+  // Mirrors extract.Clip's own filter chain and flags exactly
+  // (2026-08-24) — see that function's header for why setpts has to
+  // come before fps in the chain, why -t appears TWICE (once before
+  // -i bounding real decode, once after -vf giving the muxer the
+  // correct container duration), and why bitrate is fixed rather than
+  // CRF. This is a hand-kept copy, not shared code with the Go side (a
+  // read-only preview didn't seem worth plumbing a shared-source
   // endpoint for) — if extract.Clip's own flags ever change, this needs
   // updating alongside it, same as any other cross-file coupling in
   // this codebase that isn't enforced by the compiler.
@@ -240,10 +262,12 @@
     const multiplier = parseInt(document.getElementById('speedMultiplier').value, 10) || 1;
     const sourceSpan = seconds * multiplier;
     const filter = `setpts=PTS/${multiplier},fps=${DEFAULT_FPS},scale='min(480,iw)':-2:flags=lanczos`;
+    const bitrate = `${TARGET_BITRATE_KBPS}k`;
     const cmd = [
-      'ffmpeg -ss <timestamp> -i <source-url>',
-      `-t ${sourceSpan} -an -vf "${filter}"`,
-      '-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart',
+      `ffmpeg -ss <timestamp> -t ${sourceSpan} -i <source-url>`,
+      `-t ${seconds} -an -vf "${filter}"`,
+      `-c:v libx264 -preset veryfast -b:v ${bitrate} -maxrate ${bitrate} -bufsize ${TARGET_BITRATE_KBPS * 2}k`,
+      '-pix_fmt yuv420p -movflags +faststart',
       '-y <output.mp4>',
     ].join(' \\\n  ');
     document.getElementById('ffmpegPreview').textContent = cmd;
@@ -258,14 +282,26 @@
       : `No speed-up — a ${seconds}s clip covers exactly ${seconds}s of the scene.`;
   }
 
+  // Called from both sync functions below (2026-08-24) — harmless from
+  // the speed slider now that bitrate is fixed (see this whole block's
+  // own header): OUTPUT duration is what determines bits spent, and
+  // that's `seconds` alone, regardless of how much source speedMultiplier
+  // condensed into it. Kept wired to both anyway rather than assuming
+  // that stays true forever — cheap insurance against exactly the "went
+  // stale after a related setting changed" bug this whole feature exists
+  // to fix.
+  function updateClipSizeEstimate() {
+    const seconds = parseInt(document.getElementById('clipDurationSeconds').value, 10) || 0;
+    const estimateKB = Math.round(seconds * TARGET_KB_PER_SECOND);
+    document.getElementById('clipSizeEstimate').textContent = seconds > 0
+      ? `~${estimateKB} KB, regardless of source resolution, HDR, or scene content (fixed ${TARGET_BITRATE_KBPS} kbps).`
+      : '';
+  }
+
   function syncClipDuration(value) {
     document.getElementById('clipDurationSecondsRange').value = value;
     document.getElementById('clipDurationSeconds').value = value;
-    const seconds = parseInt(value, 10) || 0;
-    const estimateKB = Math.round(seconds * CLIP_KB_PER_SECOND);
-    document.getElementById('clipSizeEstimate').textContent = seconds > 0
-      ? `~${estimateKB} KB for a typical scene — busier or grainier scenes encode larger.`
-      : '';
+    updateClipSizeEstimate();
     updateSpeedExplainer();
     updateFfmpegPreview();
   }
@@ -273,6 +309,7 @@
   function syncSpeedMultiplier(value) {
     document.getElementById('speedMultiplierRange').value = value;
     document.getElementById('speedMultiplier').value = value;
+    updateClipSizeEstimate();
     updateSpeedExplainer();
     updateFfmpegPreview();
   }
@@ -283,72 +320,11 @@
   syncClipDuration({{.DefaultSpanSeconds}});
   syncSpeedMultiplier({{.DefaultSpeedMultiplier}});
 
-  // Copy-to-clipboard for token/key fields — added 2026-08-22, per
-  // direct request. Brief checkmark feedback instead of a toast; nothing
-  // to poll or clean up.
-  // Rebuilt 2026-08-24, per direct report: "It didn't work when I tried
-  // from phone few times" — with zero feedback either way. Root cause:
-  // `navigator.clipboard` needs a secure context (HTTPS), and this UI is
-  // normally reached over plain HTTP on the LAN (http://<nas-ip>:8420) —
-  // on iOS Safari that makes `navigator.clipboard` simply undefined, so
-  // the old code threw immediately and silently, no error shown, no
-  // fallback. Now: try the modern API only when it's actually available,
-  // fall back to the old execCommand('copy') technique (works over plain
-  // HTTP, still broadly supported despite being deprecated) otherwise —
-  // and either way, show a real toast so success/failure is never silent
-  // again.
-  function showToast(message, isError) {
-    const toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.textContent = message;
-    toast.classList.toggle('error', !!isError);
-    toast.classList.add('show');
-    clearTimeout(toast._hideTimer);
-    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), 1800);
-  }
-
-  function legacyCopy(text) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    // Off-screen, not display:none — iOS Safari won't select/copy an
-    // element that isn't actually laid out.
-    ta.style.position = 'fixed';
-    ta.style.top = '-1000px';
-    ta.style.left = '0';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.setSelectionRange(0, text.length);
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-    document.body.removeChild(ta);
-    return ok;
-  }
-
-  function copyField(elementId, btn) {
-    const el = document.getElementById(elementId);
-    // Works for both a real <input> (Plex/Jellyfin token fields) and a
-    // plain <code> display element (the API key box, which isn't an
-    // input at all) — 'value' only exists on the former.
-    const text = 'value' in el ? el.value : el.textContent;
-    if (!text) return;
-
-    const onSuccess = () => {
-      const original = btn.textContent;
-      btn.textContent = '✓';
-      setTimeout(() => { btn.textContent = original; }, 1200);
-      showToast('Copied to clipboard');
-    };
-    const onFailure = () => showToast("Couldn't copy — select and copy the text manually.", true);
-
-    if (window.isSecureContext && navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
-        legacyCopy(text) ? onSuccess() : onFailure();
-      });
-    } else {
-      legacyCopy(text) ? onSuccess() : onFailure();
-    }
-  }
+  // copyField/legacyCopy moved to layout.html 2026-08-25, once
+  // security.html needed the same copy-to-clipboard behavior for the API
+  // key box there too — same "promote to the shared layout once a second
+  // page needs it" pattern showToast/submitFormSecurely already went
+  // through (see their own comments).
 
   const defaultPorts = { plex: 32400, kodi: 8080, jellyfin: 8096 };
   let plexManualMode = false;

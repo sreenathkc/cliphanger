@@ -27,12 +27,6 @@ func main() {
 
 	dataDir := envOr("DATA_DIR", "/data")
 	port := envOr("PORT", "8420")
-	// WORKERS is also the max-simultaneous-jobs cap: each worker only
-	// ever has one job (one ffmpeg process) running at a time, so this
-	// number IS the concurrency limit (confirmed 2026-08-22, per direct
-	// request for a "max simultaneous jobs allowed" setting — it already
-	// existed under this name, just retuned).
-	workers := envIntOr("WORKERS", 3)
 	// See queue.DefaultJobTimeout's own comment for why this needs to be
 	// tunable — a real report of MKV-over-LAN seeks taking longer than
 	// the original fixed 5 minutes.
@@ -82,7 +76,28 @@ func main() {
 		}
 	}
 
-	logger.Info("cliphanger starting", "port", port, "dataDir", dataDir, "workers", workers, "jobTimeout", jobTimeout, "retentionHours", st.RetentionHours())
+	// WORKERS is an optional seed, same shape as RETENTION_HOURS —
+	// see Store.SeedMaxConcurrentJobsIfUnset. The default (nothing set,
+	// nothing seeded) is 0 = Auto (hardware-detected, see
+	// Store.AutoMaxConcurrentJobs); the Setup page is the ongoing way to
+	// change it afterward, not this env var. Used to be a fixed value
+	// read once here and passed straight into queue.New — see
+	// Store.MaxConcurrentJobs's own comment for why that produced a
+	// real slowdown report on hardware the old hardcoded default of 3
+	// didn't suit.
+	if v := os.Getenv("WORKERS"); v != "" {
+		workers, err := strconv.Atoi(v)
+		if err != nil {
+			logger.Error("WORKERS must be an integer", "value", v)
+			os.Exit(1)
+		}
+		if err := st.SeedMaxConcurrentJobsIfUnset(workers); err != nil {
+			logger.Error("seeding max concurrent jobs from environment", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	logger.Info("cliphanger starting", "port", port, "dataDir", dataDir, "maxConcurrentJobs", st.MaxConcurrentJobs(), "maxConcurrentJobsIsAuto", st.MaxConcurrentJobsIsAuto(), "jobTimeout", jobTimeout, "retentionHours", st.RetentionHours())
 	// The web UI itself is open by default now (2026-08-23 — see
 	// docs/DECISIONS.md "Web UI is open by default, not Basic-Auth-
 	// walled"), so this key is only ever needed by API CLIENTS (like
@@ -98,9 +113,9 @@ func main() {
 		backend.NewJellyfinBackend(),
 	)
 
-	q := queue.New(st, registry, mediaDir, workers, jobTimeout, logger)
+	q := queue.New(st, registry, mediaDir, jobTimeout, logger)
 
-	apiServer := api.New(st, q)
+	apiServer := api.New(st, q, logger)
 	webServer, err := web.New(st, q, registry, mediaDir, dataDir, logger)
 	if err != nil {
 		logger.Error("initializing web UI", "error", err)

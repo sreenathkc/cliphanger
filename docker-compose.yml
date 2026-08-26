@@ -3,25 +3,32 @@
 # GHCR tag yet — once one is published, replace `build: .` with
 # `image: ghcr.io/OWNER/cliphanger:latest`.
 #
-# environment: is omitted entirely below rather than left empty — an
+# environment: must be a real mapping, not just comments — an
 # `environment:` key with nothing but comments under it parses as YAML
 # null, not an empty mapping, and Compose rejects that (confirmed
 # 2026-08-22, a real deploy failure: "services.cliphanger.environment
-# must be a mapping"). Uncomment the block if you actually want to set
-# one of these:
+# must be a mapping"). Other optional vars, uncomment if needed:
 #
-#   environment:
 #     # API_KEY: "change-me"  — omit this and ClipHanger generates one
 #     # on first run, shown once in the web UI (Setup page). Only set
 #     # here for a known key on infra-as-code setups; see
 #     # Store.SeedAPIKeyIfUnset for why it's not re-applied on restart.
 #     #
-#     # WORKERS: "3"  — this is already the default (see
-#     # cmd/cliphanger/main.go); only set it for a different
-#     # max-simultaneous-jobs cap.
+#     # WORKERS: "3"  — unset defaults to Auto (picked from this
+#     # host's CPU count, cmd/cliphanger/main.go); only set this for a
+#     # different max-simultaneous-jobs cap, and even then it's just a
+#     # one-time seed for a fresh install — change it anytime afterward
+#     # from the Setup page's Concurrency section instead.
 services:
   cliphanger:
     build: .
+    environment:
+      # Raised from the 300s default (2026-08-24, real failure on this
+      # NAS: "ffmpeg clip extraction timed out before finishing" — MKV's
+      # seek index isn't always positioned as conveniently for a remote
+      # byte-range seek as MP4's is, and 5 minutes wasn't enough headroom
+      # for a slow one over this LAN). See README.md's env var table.
+      JOB_TIMEOUT_SECONDS: "900"
     # Host networking, not a bridge + port mapping (changed 2026-08-23,
     # a real live diagnosis, not a guess): under Docker's default bridge
     # network, ClipHanger's outbound requests to a media server on the

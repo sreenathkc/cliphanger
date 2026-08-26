@@ -14,8 +14,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/sreenathkc/cliphanger/internal/model"
 )
@@ -76,6 +79,52 @@ type diskData struct {
 	// preview more of the scene in less time"). Setup-page only; no
 	// per-job client override exists yet.
 	DefaultSpeedMultiplier int `json:"defaultSpeedMultiplier"`
+
+	// MaxConcurrentJobs caps how many jobs the queue runs at once — 0
+	// means "Auto" (detect from the host's CPU count, see
+	// AutoMaxConcurrentJobs), which is also Go's zero value, so a store
+	// that's never touched this defaults to Auto with no special-casing
+	// needed. Added 2026-08-26, per direct report: "i just queued up 4
+	// and it is running longer." WORKERS used to be a fixed env var
+	// (default 3), read once at startup and hard-coded ever after — no
+	// live Setup-page control, and no hardware awareness at all on a
+	// self-hosted box that could be anything from a 2-core NAS to a
+	// beefy home server. More workers doesn't mean more throughput past
+	// what the host can actually decode in parallel — see
+	// model.MaxConcurrentJobsCeiling's own comment — so a fixed default
+	// tuned for nobody in particular was exactly what produced the
+	// report: 3 parallel ffmpeg decodes on hardware that could
+	// comfortably do 1 or 2, each one slower than if it had run alone.
+	// MaxConcurrentJobsConfigured distinguishes "genuinely never set"
+	// from "explicitly set to 0/Auto" — same reasoning as
+	// RetentionConfigured, needed so the WORKERS env var can still seed
+	// a starting value on a fresh install without re-applying on every
+	// restart and silently undoing an explicit choice made via the
+	// Setup page.
+	MaxConcurrentJobs           int  `json:"maxConcurrentJobs"`
+	MaxConcurrentJobsConfigured bool `json:"maxConcurrentJobsConfigured"`
+
+	// --- Local login (2026-08-25, per direct request: "when I look at
+	// self-hosted apps like Radarr etc, they have an option to enable
+	// local login, once enabled local user will need to login even while
+	// accessing locally. we will need that as well.") A SEPARATE access
+	// gate from APIKey above, not a replacement — this is only ever
+	// checked by package web's own HTML pages (Setup/Jobs/Health/
+	// Security), never by package api's JSON routes, which DemoFlex and
+	// any other API client keep authenticating to with the API key alone,
+	// completely unaffected by whether this is turned on. Off by default,
+	// preserving the "Web UI is open by default" decision (docs/
+	// DECISIONS.md) — this is an opt-in ADDITION to that decision, not a
+	// reversal of it.
+	LocalLoginEnabled bool `json:"localLoginEnabled"`
+	// LoginUsername is plain text — usernames aren't secret. LoginPasswordHash
+	// is bcrypt, never the raw password.
+	LoginUsername     string `json:"loginUsername"`
+	LoginPasswordHash string `json:"loginPasswordHash"`
+	// SessionSecret signs the login session cookie (HMAC) — generated
+	// once, persisted, never shown in the UI. See generateSessionSecret's
+	// own comment for why this mirrors APIKey/ClientIdentifier's pattern.
+	SessionSecret string `json:"sessionSecret"`
 }
 
 // Open loads path if it exists, or starts empty (first run) — either
@@ -234,6 +283,94 @@ func (s *Store) SetDefaultSpeedMultiplier(multiplier int) error {
 	return s.writeLocked()
 }
 
+// MaxConcurrentJobs returns the current EFFECTIVE concurrency limit —
+// the live Setup-page value if one's been explicitly set (manual,
+// clamped 1-model.MaxConcurrentJobsCeiling), or an auto-detected value
+// otherwise. Read live by the queue on every worker loop iteration
+// (queue.Queue.worker), not just once at startup — a Setup-page change
+// takes effect on the very next job pull, no restart needed, same
+// pattern as RetentionHours/DefaultSpanSeconds.
+func (s *Store) MaxConcurrentJobs() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data.MaxConcurrentJobs <= 0 {
+		return AutoMaxConcurrentJobs()
+	}
+	if s.data.MaxConcurrentJobs > model.MaxConcurrentJobsCeiling {
+		return model.MaxConcurrentJobsCeiling
+	}
+	return s.data.MaxConcurrentJobs
+}
+
+// MaxConcurrentJobsIsAuto reports whether the currently effective limit
+// came from auto-detection rather than an explicit manual value — used
+// only by the Setup page, to show "Auto (currently N)" instead of a
+// bare number with no context about where it came from.
+func (s *Store) MaxConcurrentJobsIsAuto() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.MaxConcurrentJobs <= 0
+}
+
+// SetMaxConcurrentJobs is the Setup page's concurrency "Save" action —
+// n <= 0 means Auto. Always overwrites and marks the setting as
+// explicitly configured, so a WORKERS env var on a later restart no
+// longer applies (same reasoning as SetRetentionHours).
+func (s *Store) SetMaxConcurrentJobs(n int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.MaxConcurrentJobs = n
+	s.data.MaxConcurrentJobsConfigured = true
+	return s.writeLocked()
+}
+
+// SeedMaxConcurrentJobsIfUnset is WORKERS's env-var support
+// (cmd/cliphanger/main.go) — only takes effect once, on a store that's
+// never had this explicitly configured (by env var OR the web UI). A
+// fresh install with no WORKERS env var set at all never calls this,
+// so it naturally lands on Auto (the zero value) with no extra code.
+func (s *Store) SeedMaxConcurrentJobsIfUnset(n int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.MaxConcurrentJobsConfigured {
+		return nil
+	}
+	s.data.MaxConcurrentJobs = n
+	s.data.MaxConcurrentJobsConfigured = true
+	return s.writeLocked()
+}
+
+// AutoMaxConcurrentJobs picks a concurrency limit from the host's
+// visible CPU count when nothing's been manually configured. ffmpeg's
+// own decode already uses more than one thread internally for most
+// codecs, so this deliberately isn't "one worker per core" — that
+// would starve each individual job of the threads it wants and likely
+// make every job slower, the same failure mode the fixed default of 3
+// caused on smaller hardware (see MaxConcurrentJobs's own field
+// comment). Conservative in both directions: never below 1 (there's
+// always at least one job's worth of work to do), never above
+// model.MaxConcurrentJobsCeiling regardless of how many cores are
+// visible — a beefy host still shouldn't run more parallel decodes
+// than SERVER-NOTES.md's own guidance recommends, since the same box
+// is very often ALSO serving media (Plex/Kodi/Jellyfin) at the same
+// time. Uses runtime.NumCPU() (logical cores, matching what the Go
+// scheduler itself sees) rather than trying to read physical core
+// count or clock speed — a portable, dependency-free signal that's
+// good enough for a coarse 1-4 decision, not a precision benchmark.
+func AutoMaxConcurrentJobs() int {
+	cpus := runtime.NumCPU()
+	switch {
+	case cpus <= 2:
+		return 1
+	case cpus <= 4:
+		return 2
+	case cpus <= 8:
+		return 3
+	default:
+		return model.MaxConcurrentJobsCeiling
+	}
+}
+
 // SeedAPIKeyIfUnset sets the API key to `key` ONLY when the store has
 // none yet — cmd/cliphanger/main.go's support for the optional
 // API_KEY environment variable (the README's docker-compose example
@@ -265,6 +402,102 @@ func (s *Store) RotateAPIKey() (string, error) {
 	}
 	s.data.APIKey = key
 	return key, s.writeLocked()
+}
+
+// --- Local login ---
+
+func (s *Store) LocalLoginEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.LocalLoginEnabled
+}
+
+func (s *Store) LoginUsername() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.LoginUsername
+}
+
+// HasStoredPassword reports whether a password has ever been set — the
+// Security page uses this to show "leave blank to keep the current
+// password" only once there's actually a current password to keep,
+// rather than always implying one exists.
+func (s *Store) HasStoredPassword() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.LoginPasswordHash != ""
+}
+
+// SetLocalLogin is the Security page's one "Save" action for this whole
+// feature — username, an OPTIONAL new password, and the enabled flag,
+// together. Password is optional specifically so re-saving just the
+// username, or flipping the enabled flag on its own, never forces
+// retyping a password that hasn't changed — an empty password here
+// means "keep whatever hash is already stored," not "set an empty
+// password" (bcrypt would happily hash "" — this deliberately never
+// lets that become the actual stored credential).
+//
+// Enabling requires a username AND a password (new or already-stored)
+// to both exist first — refusing otherwise is what keeps this from ever
+// locking an admin out the moment they save: without this check, an
+// enabled flag with no real credentials behind it would make every
+// subsequent request fail a login it's now impossible to complete.
+func (s *Store) SetLocalLogin(enabled bool, username, password string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	hasHash := s.data.LoginPasswordHash != ""
+	if enabled {
+		if username == "" {
+			return fmt.Errorf("a username is required to enable login")
+		}
+		if password == "" && !hasHash {
+			return fmt.Errorf("a password is required to enable login")
+		}
+	}
+	s.data.LoginUsername = username
+	if password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hashing password: %w", err)
+		}
+		s.data.LoginPasswordHash = string(hash)
+	}
+	s.data.LocalLoginEnabled = enabled
+	return s.writeLocked()
+}
+
+// VerifyLogin checks a submitted username/password against the stored
+// credentials. bcrypt.CompareHashAndPassword is itself constant-time
+// with respect to the password comparison (that's the whole point of
+// hashing rather than storing/comparing plaintext); the username
+// comparison ahead of it doesn't need the same care since a username is
+// not a secret.
+func (s *Store) VerifyLogin(username, password string) bool {
+	s.mu.RLock()
+	hash := s.data.LoginPasswordHash
+	wantUser := s.data.LoginUsername
+	s.mu.RUnlock()
+	if hash == "" || username == "" || username != wantUser {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+}
+
+// SessionSecret returns the key session cookies are signed with,
+// generating and persisting one on first call — same pattern as APIKey/
+// ClientIdentifier above.
+func (s *Store) SessionSecret() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.SessionSecret != "" {
+		return s.data.SessionSecret, nil
+	}
+	secret, err := generateSessionSecret()
+	if err != nil {
+		return "", err
+	}
+	s.data.SessionSecret = secret
+	return secret, s.writeLocked()
 }
 
 // --- Servers ---
@@ -409,8 +642,16 @@ func (s *Store) NextQueued() (model.Job, bool) {
 	defer s.mu.Unlock()
 	for i, j := range s.data.Jobs {
 		if j.State == model.StateQueued {
+			now := time.Now().UTC()
 			s.data.Jobs[i].State = model.StateRunning
-			s.data.Jobs[i].UpdatedAt = time.Now().UTC()
+			s.data.Jobs[i].UpdatedAt = now
+			// StartedAt (2026-08-24) — the one moment this is ever set.
+			// UpdatedAt gets overwritten again the moment the job
+			// finishes (UpdateJob), which is exactly why Job.Duration
+			// needs THIS field rather than trying to recover "when did
+			// running actually start" from a value that's already moved
+			// on by the time anything reads it.
+			s.data.Jobs[i].StartedAt = &now
 			_ = s.writeLocked()
 			return s.data.Jobs[i], true
 		}

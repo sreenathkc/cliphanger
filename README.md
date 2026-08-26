@@ -71,16 +71,22 @@ relative to where the media actually lives.
 - **Configurable default clip duration** — 20 seconds out of the box,
   adjustable from the Setup page with a live estimated-file-size hint,
   for any job that doesn't specify its own `spanSeconds`.
-- **Configurable concurrency and timeout** — `WORKERS` caps how many
-  ffmpeg processes run at once (each is a full decode, so this really is
-  a concurrency limit, not just a thread-pool size); `JOB_TIMEOUT_SECONDS`
-  bounds how long one job may run before it's killed and marked failed
-  (a slow remote seek over MKV can genuinely take minutes).
-- **Open web UI, API-key-gated API** — the Setup/Jobs/Health pages have
-  no login, matching how comparable self-hosted tools (Sonarr, Radarr,
-  Overseerr) behave on a trusted home LAN; every `X-Api-Key`-gated
-  endpoint is what an actual client (like DemoFlex) authenticates
-  against. See `docs/DECISIONS.md`.
+- **Auto-sized concurrency, live-adjustable, plus a timeout** — max
+  concurrent jobs defaults to **Auto** (picked from this host's CPU
+  count) and is changeable anytime from the Setup page, no restart
+  needed — each running job is a full ffmpeg decode, so this really is
+  a concurrency limit, not just a thread-pool size, and more of them
+  doesn't mean more finish sooner past what the host can actually decode
+  in parallel. `JOB_TIMEOUT_SECONDS` bounds how long one job may run
+  before it's killed and marked failed (a slow remote seek over MKV can
+  genuinely take minutes).
+- **Open web UI, API-key-gated API** — the Setup/Jobs/Health/Security
+  pages have no login by default, on the assumption this is running on
+  a trusted home LAN; every `X-Api-Key`-gated endpoint is what an actual
+  client (like DemoFlex) authenticates against, unaffected either way. A
+  real username/password for the web UI itself is available too — opt in
+  from the **Security** page if you want this box to ask for a login
+  even on your own network. See `docs/DECISIONS.md`.
 - **Credential-free `/servers`** — a client can list configured servers
   and pick one without ever seeing a Plex token or Kodi password.
 - **Deploy script for a Synology NAS** — `deploy-to-synology-nas.sh`
@@ -247,13 +253,15 @@ However you installed it, the steps from here are the same:
    browsing from.
 2. You'll land on the **Setup** page directly — no login, no account to
    create (see `docs/DECISIONS.md` for why the web UI is open by
-   default on your LAN, the same way Sonarr/Radarr/Overseerr work).
+   default on your LAN). If you'd rather this box ask for a real login
+   even on your own network, turn that on from the **Security** page —
+   off unless you opt in.
 3. **Add a media server.** For Plex, click "Sign in with Plex" — it
    opens plex.tv's own sign-in page and then lists your Plex servers to
    pick from, no host/port/token to type in by hand. For Kodi or
    Jellyfin, fill in the host, port, and credentials directly, and use
    "Test connection" before saving.
-4. **Find your API key** on the same Setup page (under "API key") —
+4. **Find your API key** on the **Security** page (under "API key") —
    this is what a client application (like DemoFlex) needs to actually
    talk to ClipHanger. It's also printed in the container's logs on
    first start: `docker logs cliphanger | grep "API key ready"`.
@@ -267,7 +275,7 @@ what a client actually sends.
 |---|---|---|
 | `DATA_DIR` | `/data` | Where the store file and generated media live. |
 | `PORT` | `8420` | HTTP port. |
-| `WORKERS` | `3` | Max simultaneous jobs — each worker runs exactly one ffmpeg process at a time, so this is the concurrency cap, not just a pool size. Clamped 1–4 (each is a full decode; the same box may be serving media at the same time). |
+| `WORKERS` | *(unset = Auto)* | Seeds the initial max-simultaneous-jobs cap only, on a fresh install — change it anytime afterward from the Setup page instead (takes effect on the next job pulled off the queue, no restart). Unset means **Auto**: picked from this host's CPU count (`runtime.NumCPU()`), clamped 1–4. Each running job is a full ffmpeg decode and the same box may be serving media at the same time, so more jobs in parallel doesn't mean more finish sooner past what the host can actually decode at once — a fixed default tuned for nobody in particular is exactly what caused a real slowdown report on smaller hardware. |
 | `API_KEY` | *(generated)* | Seeds the API key on first run only. Rotate from the web UI afterwards — this variable is not re-applied on restart. |
 | `JOB_TIMEOUT_SECONDS` | `300` | How long one job (resolve + still + clip + probe) may run before it's killed and marked failed. Raise this if your setup seeks slowly over the network — MKV in particular, whose seek index isn't always positioned as conveniently for a remote byte-range seek as MP4's is. |
 | `RETENTION_HOURS` | `0` (forever) | Seeds the initial retention window in hours — how long a done/failed job's media and record stick around before an automatic sweep deletes them. Only takes effect once, on a fresh install; change it anytime afterward from the Setup page instead (takes effect immediately, no restart). `0` means keep forever. |

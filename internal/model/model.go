@@ -5,7 +5,10 @@
 // truth, not this file — if they drift, fix here to match there.
 package model
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // ServerKind is one of the three backends ClipHanger talks to. No
 // backend is privileged (CLAUDE.md's "no privileged backend" rule) —
@@ -105,11 +108,11 @@ type Source struct {
 // Job is one capture request end to end. CaptureID is chosen by the
 // CLIENT and is ClipHanger's idempotency key — see Store.SubmitJob.
 type Job struct {
-	CaptureID        string     `json:"captureId"`
-	Source           Source     `json:"source"`
-	TimestampSeconds int        `json:"timestampSeconds"`
-	SpanSeconds      int        `json:"spanSeconds"`
-	FPS              int        `json:"fps"`
+	CaptureID        string `json:"captureId"`
+	Source           Source `json:"source"`
+	TimestampSeconds int    `json:"timestampSeconds"`
+	SpanSeconds      int    `json:"spanSeconds"`
+	FPS              int    `json:"fps"`
 	// SpeedMultiplier plays back MORE of the source in the same output
 	// duration (2026-08-24, per direct request — "a scene can be a few
 	// minutes long... [a straight 20s clip] won't actually have the
@@ -118,15 +121,46 @@ type Job struct {
 	// Setup-page-only for now (no DemoFlex-side per-request control),
 	// so this is effectively always 0/omitted on real submissions,
 	// falling back to Store.DefaultSpeedMultiplier().
-	SpeedMultiplier  int        `json:"speedMultiplier,omitempty"`
-	State            JobState   `json:"state"`
-	Error            string     `json:"error,omitempty"`
-	FrameCount       int        `json:"frameCount,omitempty"`
-	StillBytes       int        `json:"stillBytes,omitempty"`
-	ClipBytes        int        `json:"clipBytes,omitempty"`
-	MediaInfo        *MediaInfo `json:"mediaInfo,omitempty"`
-	UpdatedAt        time.Time  `json:"updatedAt"`
-	CreatedAt        time.Time  `json:"createdAt"`
+	SpeedMultiplier int        `json:"speedMultiplier,omitempty"`
+	State           JobState   `json:"state"`
+	Error           string     `json:"error,omitempty"`
+	FrameCount      int        `json:"frameCount,omitempty"`
+	StillBytes      int        `json:"stillBytes,omitempty"`
+	ClipBytes       int        `json:"clipBytes,omitempty"`
+	MediaInfo       *MediaInfo `json:"mediaInfo,omitempty"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	// StartedAt is when a WORKER actually picked this job up (stamped by
+	// Store.NextQueued, the queued→running transition) — distinct from
+	// CreatedAt, which is when the client submitted it and can sit
+	// behind other jobs for a while if WORKERS is busy. Nil until that
+	// happens. Added 2026-08-24, per direct request ("show the total
+	// time took to generate the clip in the job detail") — see Duration
+	// below, the whole reason this exists.
+	StartedAt *time.Time `json:"startedAt,omitempty"`
+}
+
+// Duration reports how long the actual extraction took, formatted for
+// display — CreatedAt→UpdatedAt was the OTHER, simpler way to compute
+// this from fields that already existed, but deliberately not used:
+// that span also counts time spent waiting behind other jobs for a free
+// worker, a WORKERS-concurrency artifact having nothing to do with how
+// long the clip itself took to generate, and would read as misleading
+// the moment more than one job is queued at once. Empty whenever
+// there's nothing to report yet — StartedAt unset (still queued), or
+// the job hasn't reached a terminal state.
+func (j Job) Duration() string {
+	if j.StartedAt == nil || (j.State != StateDone && j.State != StateFailed) {
+		return ""
+	}
+	d := j.UpdatedAt.Sub(*j.StartedAt)
+	if d < 0 {
+		return ""
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%.0fs", d.Seconds())
+	}
+	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
 // Defaults, applied when a submitted job omits them — see
@@ -149,6 +183,15 @@ const (
 	// several minutes, missing most of its context. 2x doubles how much
 	// of the scene a clip actually covers for the same output length.
 	DefaultSpeedMultiplier = 2
+	// MaxConcurrentJobsCeiling is the hard cap on simultaneous ffmpeg
+	// processes, manual or auto-detected — see docs/SERVER-NOTES.md's
+	// "cap parallel ffmpeg processes at 2-4" guidance: each is a full
+	// decode, and the same box often serves media at the same time, so
+	// throughput doesn't keep scaling with worker count past this point
+	// — it just means each job gets a smaller slice of the same CPU and
+	// finishes slower. Shared by Store.MaxConcurrentJobs (manual clamp)
+	// and Store.AutoMaxConcurrentJobs (auto-detected ceiling).
+	MaxConcurrentJobsCeiling = 4
 )
 
 // MediaInfo is ffprobe's findings about the source file, attached to a

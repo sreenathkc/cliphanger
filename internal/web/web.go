@@ -1,6 +1,6 @@
 // Package web is the credential-owning settings UI — Setup, Jobs,
-// Health, server-rendered and embedded in the binary. Open by default
-// on the LAN, no login wall — changed 2026-08-23 (see
+// Health, Security, server-rendered and embedded in the binary. Open by
+// default on the LAN, no login wall — changed 2026-08-23 (see
 // docs/DECISIONS.md "Web UI is open by default, not Basic-Auth-walled"
 // for the full reasoning) after direct pushback on the original design
 // (HTTP Basic Auth using the API key as the password): that made first
@@ -8,6 +8,14 @@
 // page was ONLY ever shown ON the Setup page — and didn't match how
 // comparable self-hosted tools (Sonarr, Radarr, Overseerr) actually
 // work, which is unauthenticated by default on a trusted home LAN.
+//
+// Local login (2026-08-25) is an opt-in ADDITION to that decision, not a
+// reversal — see store.SetLocalLogin's own doc comment. The credential
+// it's configured with lives entirely inside this already-open UI (the
+// Security page), the same bootstrap order Sonarr/Radarr/Overseerr
+// themselves use: you set a username/password while still unauthenticated,
+// THEN flip it on, so there's no circular "need the credential to reach
+// the page that issues it" problem this time.
 package web
 
 import (
@@ -21,6 +29,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -107,22 +116,79 @@ func (s *Server) routes() {
 	// its own top-level "/" → "/ui/setup" redirect instead. Registering
 	// one here too would only ever be reached at literal "/ui/", not
 	// the bare site root a browser actually opens.
-	s.mux.HandleFunc("GET /setup", s.withLogging(s.handleSetup))
-	s.mux.HandleFunc("POST /setup/servers", s.withLogging(s.handleAddServer))
-	s.mux.HandleFunc("POST /setup/plex/pin", s.withLogging(s.handleCreatePlexPin))
-	s.mux.HandleFunc("GET /setup/plex/pin/{id}", s.withLogging(s.handlePollPlexPin))
-	s.mux.HandleFunc("POST /setup/plex/servers", s.withLogging(s.handleListPlexServers))
-	s.mux.HandleFunc("POST /setup/servers/{id}/test", s.withLogging(s.handleTestServer))
-	s.mux.HandleFunc("POST /setup/servers/{id}/delete", s.withLogging(s.handleDeleteServer))
-	s.mux.HandleFunc("POST /setup/apikey/rotate", s.withLogging(s.handleRotateKey))
-	s.mux.HandleFunc("POST /setup/retention", s.withLogging(s.handleSetRetention))
-	s.mux.HandleFunc("POST /setup/clip-duration", s.withLogging(s.handleSetClipDuration))
-	s.mux.HandleFunc("POST /setup/speed-multiplier", s.withLogging(s.handleSetSpeedMultiplier))
-	s.mux.HandleFunc("GET /jobs", s.withLogging(s.handleJobs))
-	s.mux.HandleFunc("POST /jobs/{captureId}/delete", s.withLogging(s.handleDeleteJob))
-	s.mux.HandleFunc("GET /jobs/{captureId}/thumb", s.withLogging(s.handleThumb))
-	s.mux.HandleFunc("GET /jobs/{captureId}/log", s.withLogging(s.handleJobLog))
-	s.mux.HandleFunc("GET /health", s.withLogging(s.handleHealth))
+	//
+	// /login and /logout are deliberately the only routes NOT wrapped in
+	// requireLogin — wrapping them would make the login page itself
+	// require being already logged in to view, which is exactly the
+	// circular bootstrap problem this feature's own package doc comment
+	// explains how it avoids. Every other route below gets requireLogin,
+	// which is a no-op pass-through unless local login is actually turned
+	// on (see that function's own comment) — so this doesn't change
+	// anything about how the UI behaves until a user opts in on the
+	// Security page.
+	s.mux.HandleFunc("GET /login", s.withLogging(s.handleLoginPage))
+	s.mux.HandleFunc("POST /login", s.withLogging(s.handleLoginSubmit))
+	s.mux.HandleFunc("POST /logout", s.withLogging(s.handleLogout))
+
+	s.mux.HandleFunc("GET /setup", s.withLogging(s.requireLogin(s.handleSetup)))
+	s.mux.HandleFunc("POST /setup/servers", s.withLogging(s.requireLogin(s.handleAddServer)))
+	s.mux.HandleFunc("POST /setup/plex/pin", s.withLogging(s.requireLogin(s.handleCreatePlexPin)))
+	s.mux.HandleFunc("GET /setup/plex/pin/{id}", s.withLogging(s.requireLogin(s.handlePollPlexPin)))
+	s.mux.HandleFunc("POST /setup/plex/servers", s.withLogging(s.requireLogin(s.handleListPlexServers)))
+	s.mux.HandleFunc("POST /setup/servers/{id}/test", s.withLogging(s.requireLogin(s.handleTestServer)))
+	s.mux.HandleFunc("POST /setup/servers/{id}/delete", s.withLogging(s.requireLogin(s.handleDeleteServer)))
+	s.mux.HandleFunc("POST /setup/retention", s.withLogging(s.requireLogin(s.handleSetRetention)))
+	s.mux.HandleFunc("POST /setup/clip-duration", s.withLogging(s.requireLogin(s.handleSetClipDuration)))
+	s.mux.HandleFunc("POST /setup/speed-multiplier", s.withLogging(s.requireLogin(s.handleSetSpeedMultiplier)))
+	s.mux.HandleFunc("POST /setup/max-concurrent-jobs", s.withLogging(s.requireLogin(s.handleSetMaxConcurrentJobs)))
+	s.mux.HandleFunc("GET /jobs", s.withLogging(s.requireLogin(s.handleJobs)))
+	s.mux.HandleFunc("POST /jobs/{captureId}/delete", s.withLogging(s.requireLogin(s.handleDeleteJob)))
+	s.mux.HandleFunc("GET /jobs/{captureId}/thumb", s.withLogging(s.requireLogin(s.handleThumb)))
+	s.mux.HandleFunc("GET /jobs/{captureId}/log", s.withLogging(s.requireLogin(s.handleJobLog)))
+	s.mux.HandleFunc("GET /health", s.withLogging(s.requireLogin(s.handleHealth)))
+
+	// Security — API key + local login, split out of Setup 2026-08-25
+	// (per direct license to reorganize: "you can change the menu items/
+	// organise if the setup page is getting too busy") once Setup's own
+	// six sections plus a new Local Login section would have made seven
+	// on one page. Grouping the API key here too, not just the new
+	// setting, groups everything that's actually about "who can get in"
+	// under one tab instead of splitting it across two.
+	s.mux.HandleFunc("GET /security", s.withLogging(s.requireLogin(s.handleSecurity)))
+	s.mux.HandleFunc("POST /security/apikey/rotate", s.withLogging(s.requireLogin(s.handleRotateKey)))
+	s.mux.HandleFunc("POST /security/login", s.withLogging(s.requireLogin(s.handleSetLocalLogin)))
+}
+
+// requireLogin gates a route behind a valid session cookie — but ONLY
+// when local login is actually enabled in the store; otherwise it's a
+// transparent pass-through, so nothing changes about the "open by
+// default on the LAN" behavior until a user explicitly opts in on the
+// Security page. Checked fresh on every request (not cached) so flipping
+// the toggle off takes effect immediately, with no stale "still
+// enabled" state anywhere to get out of sync.
+func (s *Server) requireLogin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.store.LocalLoginEnabled() {
+			next(w, r)
+			return
+		}
+		cookie, err := r.Cookie(sessionCookieName)
+		if err == nil {
+			secret, secretErr := s.store.SessionSecret()
+			if secretErr == nil {
+				if _, ok := verifySession(secret, cookie.Value); ok {
+					next(w, r)
+					return
+				}
+			}
+		}
+		// r.URL.Path here is already /ui-stripped (cmd/cliphanger/main.go
+		// mounts this whole package under /ui/ via http.StripPrefix) — the
+		// prefix has to be added back for `next` to be a real, reachable
+		// URL rather than one only valid from inside this package's own
+		// (prefix-less) view of its routes.
+		http.Redirect(w, r, "/ui/login?next="+template.URLQueryEscaper("/ui"+r.URL.Path), http.StatusFound)
+	}
 }
 
 // statusRecorder captures the status code a handler actually wrote —
@@ -138,13 +204,15 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
-// withLogging used to be requireAuth — the web UI is no longer behind
-// Basic Auth (see package doc comment / docs/DECISIONS.md), but the
-// request-level logging every route relies on (added 2026-08-23, after
-// a real report that "nothing happened" in the browser with no way to
-// tell, server-side, whether the request even arrived) is still
-// valuable regardless, so it stays as the one wrapper every route goes
-// through. Method/path/status/duration only, same as before.
+// withLogging used to be requireAuth — the web UI's own auth is
+// requireLogin now (2026-08-25), a separate, opt-in wrapper (see that
+// function's comment), not this one. This one is purely the
+// request-level logging every route relies on regardless of auth state
+// (added 2026-08-23, after a real report that "nothing happened" in the
+// browser with no way to tell, server-side, whether the request even
+// arrived), so it stays as the outermost wrapper every route goes
+// through — a redirected-to-login request still gets logged. Method/
+// path/status/duration only, same as before.
 func (s *Server) withLogging(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -202,20 +270,18 @@ func redirectWithFlash(w http.ResponseWriter, r *http.Request, path, message str
 // --- Setup ---
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
-	key, err := s.store.APIKey()
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
 	flash, flashErr := flashFromQuery(r)
 	s.render(w, "setup", map[string]interface{}{
 		"Title": "Setup", "Nav": "setup",
 		"Flash": flash, "FlashError": flashErr,
-		"APIKey": key, "Servers": s.store.ListServers(),
-		"RetentionHours":         s.store.RetentionHours(),
-		"DefaultSpanSeconds":     s.store.DefaultSpanSeconds(),
-		"DefaultSpeedMultiplier": s.store.DefaultSpeedMultiplier(),
-		"DefaultFPS":             model.DefaultFPS,
+		"Servers":                  s.store.ListServers(),
+		"RetentionHours":           s.store.RetentionHours(),
+		"DefaultSpanSeconds":       s.store.DefaultSpanSeconds(),
+		"DefaultSpeedMultiplier":   s.store.DefaultSpeedMultiplier(),
+		"DefaultFPS":               model.DefaultFPS,
+		"MaxConcurrentJobs":        s.store.MaxConcurrentJobs(),
+		"MaxConcurrentJobsIsAuto":  s.store.MaxConcurrentJobsIsAuto(),
+		"MaxConcurrentJobsCeiling": model.MaxConcurrentJobsCeiling,
 	})
 }
 
@@ -290,6 +356,38 @@ func (s *Server) handleSetSpeedMultiplier(w http.ResponseWriter, r *http.Request
 		return
 	}
 	redirectWithFlash(w, r, "/ui/setup", fmt.Sprintf("Default playback speed set to %dx.", multiplier), false)
+}
+
+// handleSetMaxConcurrentJobs is the Setup page's concurrency "Save"
+// action (2026-08-26, per direct report — "i just queued up 4 and it
+// is running longer, so by default lets set to 1 or auto"). Blank or 0
+// means Auto (hardware-detected, see Store.AutoMaxConcurrentJobs);
+// takes effect on the queue's very next job pull, no restart needed —
+// same live pattern as retention/clip-duration/speed above.
+func (s *Server) handleSetMaxConcurrentJobs(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectWithFlash(w, r, "/ui/setup", "Couldn't read that form submission.", true)
+		return
+	}
+	raw := r.FormValue("maxConcurrentJobs")
+	n := 0
+	if raw != "" {
+		var err error
+		n, err = strconv.Atoi(raw)
+		if err != nil || n < 0 || n > model.MaxConcurrentJobsCeiling {
+			redirectWithFlash(w, r, "/ui/setup", fmt.Sprintf("Max concurrent jobs must be blank/0 (Auto) or a whole number 1-%d.", model.MaxConcurrentJobsCeiling), true)
+			return
+		}
+	}
+	if err := s.store.SetMaxConcurrentJobs(n); err != nil {
+		redirectWithFlash(w, r, "/ui/setup", "Couldn't save max concurrent jobs: "+err.Error(), true)
+		return
+	}
+	msg := fmt.Sprintf("Max concurrent jobs set to Auto (currently %d, based on this host's CPU count).", store.AutoMaxConcurrentJobs())
+	if n > 0 {
+		msg = fmt.Sprintf("Max concurrent jobs set to %d.", n)
+	}
+	redirectWithFlash(w, r, "/ui/setup", msg, false)
 }
 
 func (s *Server) handleAddServer(w http.ResponseWriter, r *http.Request) {
@@ -457,10 +555,136 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.store.RotateAPIKey(); err != nil {
-		redirectWithFlash(w, r, "/ui/setup", "Couldn't rotate the key: "+err.Error(), true)
+		redirectWithFlash(w, r, "/ui/security", "Couldn't rotate the key: "+err.Error(), true)
 		return
 	}
-	redirectWithFlash(w, r, "/ui/setup", "API key rotated. Update every client before they try again.", false)
+	redirectWithFlash(w, r, "/ui/security", "API key rotated. Update every client before they try again.", false)
+}
+
+// --- Security (2026-08-25) ---
+
+func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request) {
+	key, err := s.store.APIKey()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	flash, flashErr := flashFromQuery(r)
+	s.render(w, "security", map[string]interface{}{
+		"Title": "Security", "Nav": "security",
+		"Flash": flash, "FlashError": flashErr,
+		"APIKey":            key,
+		"LocalLoginEnabled": s.store.LocalLoginEnabled(),
+		"LoginUsername":     s.store.LoginUsername(),
+		"HasStoredPassword": s.store.HasStoredPassword(),
+	})
+}
+
+// handleSetLocalLogin is the Security page's Local Login "Save" action.
+// See store.SetLocalLogin's own doc comment for the validation rules
+// (username+password both required to enable; blank password keeps the
+// existing one) — this handler just reads the form and reports whatever
+// that returns, success or the specific reason it refused.
+func (s *Server) handleSetLocalLogin(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectWithFlash(w, r, "/ui/security", "Couldn't read that form submission.", true)
+		return
+	}
+	enabled := r.FormValue("enabled") == "on"
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	if err := s.store.SetLocalLogin(enabled, username, password); err != nil {
+		redirectWithFlash(w, r, "/ui/security", err.Error(), true)
+		return
+	}
+	msg := "Local login turned off — the web UI is open on your network again."
+	if enabled {
+		msg = "Local login is on. You'll need to sign in on this and any other browser from now on."
+	}
+	redirectWithFlash(w, r, "/ui/security", msg, false)
+}
+
+// --- Login (2026-08-25) ---
+//
+// Deliberately outside requireLogin (see routes()) — these are the one
+// path that has to stay reachable regardless of login state, or turning
+// local login on would make it impossible to ever log in at all.
+
+func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	// Already logged in (or login isn't even on) and landed here anyway
+	// — e.g. a bookmarked /ui/login, or clicking back after signing in —
+	// send them somewhere that actually has content rather than showing
+	// a login form there's nothing left to do with.
+	if !s.store.LocalLoginEnabled() {
+		http.Redirect(w, r, "/ui/setup", http.StatusFound)
+		return
+	}
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		if secret, err := s.store.SessionSecret(); err == nil {
+			if _, ok := verifySession(secret, cookie.Value); ok {
+				http.Redirect(w, r, "/ui/setup", http.StatusFound)
+				return
+			}
+		}
+	}
+	next := r.URL.Query().Get("next")
+	if next == "" {
+		next = "/ui/setup"
+	}
+	flash, flashErr := flashFromQuery(r)
+	s.render(w, "login", map[string]interface{}{
+		"Title": "Log In", "HideNav": true, "Next": next,
+		"Flash": flash, "FlashError": flashErr,
+	})
+}
+
+// loginRedirect builds a /ui/login URL carrying both `next` (where to
+// land after a successful attempt) and a flash message — a small
+// variant of redirectWithFlash, which always appends its own query
+// string with a literal "?" and would produce an invalid URL
+// (`?next=X?flash=Y`) if handed a path that already has one.
+func loginRedirect(w http.ResponseWriter, r *http.Request, next, message string, isError bool) {
+	q := url.Values{"next": {next}, "flash": {message}}
+	if isError {
+		q.Set("flashError", "1")
+	}
+	http.Redirect(w, r, "/ui/login?"+q.Encode(), http.StatusFound)
+}
+
+func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		loginRedirect(w, r, "/ui/setup", "Couldn't read that form submission.", true)
+		return
+	}
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	next := r.FormValue("next")
+	if next == "" {
+		next = "/ui/setup"
+	}
+	if !s.store.VerifyLogin(username, password) {
+		loginRedirect(w, r, next, "Wrong username or password.", true)
+		return
+	}
+	secret, err := s.store.SessionSecret()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	expiry := time.Now().Add(sessionDuration)
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookieName, Value: signSession(secret, username, expiry),
+		Path: "/", Expires: expiry, HttpOnly: true, SameSite: http.SameSiteLaxMode,
+	})
+	http.Redirect(w, r, next, http.StatusFound)
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookieName, Value: "",
+		Path: "/", Expires: time.Unix(0, 0), HttpOnly: true, SameSite: http.SameSiteLaxMode,
+	})
+	http.Redirect(w, r, "/ui/login", http.StatusFound)
 }
 
 // --- Jobs ---

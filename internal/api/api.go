@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,13 +26,14 @@ import (
 const version = "0.1.0"
 
 type Server struct {
-	store *store.Store
-	queue *queue.Queue
-	mux   *http.ServeMux
+	store  *store.Store
+	queue  *queue.Queue
+	mux    *http.ServeMux
+	logger *slog.Logger
 }
 
-func New(st *store.Store, q *queue.Queue) *Server {
-	s := &Server{store: st, queue: q, mux: http.NewServeMux()}
+func New(st *store.Store, q *queue.Queue, logger *slog.Logger) *Server {
+	s := &Server{store: st, queue: q, mux: http.NewServeMux(), logger: logger}
 	s.routes()
 	return s
 }
@@ -40,15 +42,54 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// statusRecorder/withLogging mirror package web's own (2026-08-23,
+// "nothing happened in the browser with no way to tell, server-side,
+// whether the request even arrived") — the exact same class of gap,
+// just never applied here. This package is the actual client-facing
+// surface (what DemoFlex or any other client talks to), and until now
+// it logged NOTHING per request — a real report (2026-08-26: "Force
+// Refresh isn't adding any jobs... I think it should say the fail
+// reason either at client side or at the cliphanger log") traced back
+// to exactly this: the client's job WAS rejected with a clear 400
+// ("references unknown serverId") and that reason WAS sent back in the
+// response body, but there was no server-side trace of the request
+// having happened at all, making it much harder to diagnose from the
+// server side than it needed to be. Wrapping every route here the same
+// way package web already does closes that gap for the surface that
+// actually matters most — this is what every real client talks to.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+// withLogging wraps OUTSIDE requireAPIKey, same reasoning as web's own
+// version — a request rejected for a bad/missing API key still gets
+// logged, not just successfully authenticated ones.
+func (s *Server) withLogging(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		defer func() {
+			s.logger.Info("api request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "duration", time.Since(start))
+		}()
+		next(rec, r)
+	}
+}
+
 func (s *Server) routes() {
-	s.mux.HandleFunc("GET /health", s.requireAPIKey(s.handleHealth))
-	s.mux.HandleFunc("GET /servers", s.requireAPIKey(s.handleListServers))
-	s.mux.HandleFunc("POST /jobs", s.requireAPIKey(s.handleSubmitJobs))
-	s.mux.HandleFunc("GET /jobs", s.requireAPIKey(s.handleListJobs))
-	s.mux.HandleFunc("GET /jobs/{captureId}", s.requireAPIKey(s.handleGetJob))
-	s.mux.HandleFunc("DELETE /jobs/{captureId}", s.requireAPIKey(s.handleDeleteJob))
-	s.mux.HandleFunc("GET /media/{captureId}/still", s.requireAPIKey(s.handleMedia(false)))
-	s.mux.HandleFunc("GET /media/{captureId}/clip", s.requireAPIKey(s.handleMedia(true)))
+	s.mux.HandleFunc("GET /health", s.withLogging(s.requireAPIKey(s.handleHealth)))
+	s.mux.HandleFunc("GET /servers", s.withLogging(s.requireAPIKey(s.handleListServers)))
+	s.mux.HandleFunc("POST /jobs", s.withLogging(s.requireAPIKey(s.handleSubmitJobs)))
+	s.mux.HandleFunc("GET /jobs", s.withLogging(s.requireAPIKey(s.handleListJobs)))
+	s.mux.HandleFunc("GET /jobs/{captureId}", s.withLogging(s.requireAPIKey(s.handleGetJob)))
+	s.mux.HandleFunc("DELETE /jobs/{captureId}", s.withLogging(s.requireAPIKey(s.handleDeleteJob)))
+	s.mux.HandleFunc("GET /media/{captureId}/still", s.withLogging(s.requireAPIKey(s.handleMedia(false))))
+	s.mux.HandleFunc("GET /media/{captureId}/clip", s.withLogging(s.requireAPIKey(s.handleMedia(true))))
 }
 
 // requireAPIKey rejects anything without a matching X-Api-Key header —
@@ -143,11 +184,21 @@ func (s *Server) handleSubmitJobs(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("job %q is missing source.serverId or source.itemId", item.CaptureID))
 			return
 		}
-		if _, ok := s.store.GetServer(item.Source.ServerID); !ok {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("job %q references unknown serverId %q", item.CaptureID, item.Source.ServerID))
-			return
-		}
-
+		// Deliberately NOT validated against s.store.GetServer here any
+		// more (2026-08-26, real report: a job submitted with an unknown
+		// serverId — e.g. ClipHanger has no server configured at all yet
+		// — used to hard-reject the WHOLE request with a bare HTTP 400
+		// and no job record ever created, leaving no trace in the Jobs
+		// page at all; the only way to see why was a raw HTTP response a
+		// self-hosted user's client app may not surface, or (until the
+		// same-day logging fix) not even the server's own logs. This
+		// exact resolution failure ALREADY has correct handling one step
+		// downstream — queue.process's own `q.store.GetServer` check
+		// fails the job with a clear reason once a worker picks it up —
+		// so accepting the job here and letting it reach the queue
+		// reuses that existing, already-correct path instead of
+		// duplicating it, and gives a real, visible "failed" Jobs-page
+		// entry with a real reason instead of a client-side-only error.
 		job := model.Job{
 			CaptureID:        item.CaptureID,
 			Source:           item.Source,
