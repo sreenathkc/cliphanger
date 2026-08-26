@@ -13,7 +13,17 @@
 
 FROM --platform=$BUILDPLATFORM golang:1.23-bookworm AS build
 WORKDIR /src
-COPY go.mod ./
+# go.sum too, not just go.mod (bug fixed 2026-08-25, real deploy
+# failure: "missing go.sum entry for module providing package
+# golang.org/x/crypto/bcrypt") — this line predates any external
+# dependency at all (go.mod alone was enough when the module graph was
+# empty), and never got updated once golang.org/x/crypto/bcrypt (for
+# local-login password hashing) actually introduced a go.sum to verify
+# against. `go build` in `-mod=readonly` mode (the default) has no
+# fallback for a missing go.sum — it can't just re-fetch and trust the
+# module, so the build fails outright rather than silently skipping
+# verification.
+COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
 

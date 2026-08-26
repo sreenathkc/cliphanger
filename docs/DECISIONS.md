@@ -137,6 +137,57 @@ An optional real username/password for the web UI (matching Sonarr's
 future addition, not built here — this change is scoped to removing
 the mandatory wall, not building session-based auth.
 
+**Built 2026-08-25** — the "future addition" above, per direct request
+("radarr etc have an option to enable local login, once enabled local
+user will need to login even while accessing locally"). Exactly the
+optional, opt-in shape already sketched out: default stays open; a new
+Security page (API key moved there too, alongside Setup getting
+crowded — see "Setup page split into Setup + Security" below) lets an
+admin set a username/password and flip local login on, and ONLY THEN
+does every web UI page (Setup/Jobs/Health/Security) start requiring a
+signed session cookie, checked fresh on every request via `requireLogin`
+in `internal/web/web.go`. The bootstrap order avoids the exact
+circularity that sank the original Basic-Auth design: credentials are
+configured while the UI is still open, before the wall goes up, not
+the other way around.
+
+Deliberately scoped to `internal/web`'s HTML pages only — `internal/api`
+(the JSON API DemoFlex and other clients use) keeps authenticating with
+the API key alone, completely unaffected by this toggle either way. A
+browser session and an API key are different credentials guarding
+different surfaces; requiring both for API calls that already carry a
+valid key would add friction with no real security gain, since the key
+itself is already the access control there.
+
+Session cookie is a stateless, HMAC-signed token (`internal/web/session.go`)
+keyed by a new persisted `SessionSecret` (same generate-once pattern as
+`APIKey`/`ClientIdentifier`) — no session table needed, consistent with
+the whole store staying one plain JSON file. 30-day expiry: a home-LAN
+settings UI, not a bank; forcing daily re-logins would be pure friction
+for no real security gained on a network already trusted enough to
+self-host media extraction on. Password hashing is bcrypt
+(`golang.org/x/crypto/bcrypt`, pinned to v0.36.0 — the newest release
+whose own `go.mod` still only requires go1.23.0, matching the
+`golang:1.23-bookworm` Dockerfile base rather than dragging that image
+version along as a side effect of one dependency).
+
+---
+
+## Setup page split into Setup + Security (2026-08-25)
+
+Adding Local Login (above) as an eighth section would have made the
+Setup page's card list start feeling like a wall of settings rather
+than a page — flagged directly ("you can change the menu items/
+organise if the setup page is getting too busy"), taken as license to
+reorganize rather than just append. The API key section moved out
+alongside it: both it and Local Login are fundamentally the same
+question — "who's allowed in, and how" — just for two different
+surfaces (the JSON API vs. this web UI), so grouping them under one new
+Security nav tab reads as one coherent page rather than an arbitrary
+split. Setup keeps everything that's actually about extraction/server
+config: Retention, Clip duration, Playback speed, the ffmpeg preview,
+and Media servers.
+
 ---
 
 ## Submit-and-poll, not request-response
@@ -193,6 +244,19 @@ defaults, the server just falls back": it's Setup-page-only in
 practice, since DemoFlex deliberately doesn't set it per job (unlike
 `spanSeconds`, which it always sends explicitly) — the server's own
 configured default is what actually governs every real submission.
+
+Clip encoding switched from CRF (constant quality) to a fixed 200 kbps
+bitrate on 2026-08-24, per direct request — "a 1080 movie and a 4k UHD
+HDR movie... ideally both format should generate same file output."
+Source resolution/HDR were never actually why size varied (both already
+get normalized away by the fixed 480px width and 8-bit `yuv420p`
+output) — CRF just spends however many bits a scene NEEDS, so size
+tracked content complexity instead: two SDR sources at identical
+settings on the same box produced 186829 and 1194204 bytes, a 6x
+spread, from content alone. Constant bitrate makes every clip converge
+on roughly `spanSeconds × 25 KB` regardless of what the source looked
+like, at the cost of a busy scene now compressing softer rather than
+growing the file.
 
 ---
 

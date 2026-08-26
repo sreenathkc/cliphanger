@@ -40,3 +40,16 @@ func generateClientIdentifier() (string, error) {
 	}
 	return "cliphanger-" + hex.EncodeToString(buf), nil
 }
+
+// generateSessionSecret produces the key session cookies are HMAC-signed
+// with (2026-08-25, local login — see SetLocalLogin) — generated and
+// persisted once, same pattern as generateAPIKey, never shown in the UI
+// (unlike the API key, nothing needs to read this back; only the server
+// itself ever uses it, to sign and verify its own cookies).
+func generateSessionSecret() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generating session secret: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
+}

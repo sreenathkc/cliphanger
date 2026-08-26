@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/sreenathkc/cliphanger/internal/model"
 )
@@ -28,7 +29,12 @@ func (b *JellyfinBackend) authHeader(server model.Server) string {
 }
 
 func (b *JellyfinBackend) Resolve(ctx context.Context, server model.Server, itemID string) (ResolvedSource, error) {
-	downloadURL := fmt.Sprintf("http://%s:%d/Items/%s/Download", server.Host, server.Port, itemID)
+	// itemID escaped (2026-08-24, real finding from a security review —
+	// see plex.go's own Resolve for the matching fix and full reasoning):
+	// this was the other of the two backends interpolating a client-
+	// supplied itemID into a URL unescaped, unlike Kodi's own
+	// url.PathEscape convention for exactly this.
+	downloadURL := fmt.Sprintf("http://%s:%d/Items/%s/Download", server.Host, server.Port, url.PathEscape(itemID))
 
 	// The credential is a HEADER here, not a query parameter or
 	// userinfo component the way Plex/Kodi carry theirs — confirmed in

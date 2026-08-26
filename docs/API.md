@@ -174,7 +174,19 @@ once a clip needed to run longer than a few seconds.
 | Duration | single frame | `spanSeconds` (default 20) |
 | Frame rate | — | `fps` (default 10) |
 | Audio | — | stripped |
-| Typical size | ~150 KB | ~100–500 KB, depends on content |
+| Typical size | ~150 KB | ~`spanSeconds` × 25 KB (constant bitrate, see below) |
+
+Clip size targets a fixed **bitrate** (200 kbps), not a fixed quality,
+as of 2026-08-24 — changed from CRF per direct request ("a 1080 movie
+and a 4k UHD HDR movie... ideally both format should generate same file
+output"). CRF spends however many bits a scene actually needs, so size
+scaled with content complexity regardless of source resolution/HDR (both
+already normalized away by the fixed 480px width and 8-bit output) —
+real evidence: two SDR sources at identical settings on the same box
+produced 186829 and 1194204 bytes, a 6x spread, from content alone.
+Constant bitrate makes every clip converge on roughly the same size
+instead, trading some quality consistency (a busy scene now compresses
+softer rather than growing the file) for size predictability.
 
 ---
 
@@ -239,8 +251,7 @@ Open by default on the LAN, no login (revised 2026-08-23 — see
 docs/DECISIONS.md "Web UI is open by default, not Basic-Auth-walled").
 It does manage media-server credentials, but the earlier "must be
 behind at least the API key" stance made first login circular in
-practice and didn't match how comparable self-hosted tools (Sonarr,
-Radarr, Overseerr) actually behave on a trusted home LAN.
+practice on a trusted home LAN.
 
 ---
 

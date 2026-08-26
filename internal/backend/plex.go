@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/sreenathkc/cliphanger/internal/model"
 )
@@ -40,8 +41,19 @@ type plexMetadataResponse struct {
 }
 
 func (b *PlexBackend) Resolve(ctx context.Context, server model.Server, itemID string) (ResolvedSource, error) {
+	// itemID/PlexToken escaped (2026-08-24, real finding from a security
+	// review) — this was building the URL by raw string interpolation,
+	// the one place in the three backends that didn't already follow
+	// Kodi's own established url.PathEscape/QueryEscape convention for
+	// exactly this. Low real-world severity given a caller already needs
+	// a valid ClipHanger API key to reach this at all (same trust level
+	// this whole service already assumes — see docs/DECISIONS.md), but a
+	// genuinely wrong pattern regardless: an itemID containing `?`, `#`,
+	// or similar could otherwise mangle the request in ways that have
+	// nothing to do with malice — a legitimately weird itemID breaking a
+	// request silently and confusingly is reason enough on its own.
 	metaURL := fmt.Sprintf("http://%s:%d/library/metadata/%s?X-Plex-Token=%s",
-		server.Host, server.Port, itemID, server.PlexToken)
+		server.Host, server.Port, url.PathEscape(itemID), url.QueryEscape(server.PlexToken))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metaURL, nil)
 	if err != nil {
@@ -74,8 +86,13 @@ func (b *PlexBackend) Resolve(ctx context.Context, server model.Server, itemID s
 		return ResolvedSource{}, fmt.Errorf("Plex item %s has no Media/Part in its metadata — body: %s", itemID, truncate(body, 300))
 	}
 
+	// partKey itself stays unescaped — it's Plex's OWN response (already
+	// a correctly-formed URL path segment, e.g. "/library/parts/12345/
+	// file.mkv"), not client-supplied, so it's the same trusted-server-
+	// data case Kodi's own resolved file path is, not the itemID case
+	// above. Only the token (still ours to get right) gets escaped.
 	partKey := parsed.MediaContainer.Metadata[0].Media[0].Part[0].Key
-	streamURL := fmt.Sprintf("http://%s:%d%s?X-Plex-Token=%s", server.Host, server.Port, partKey, server.PlexToken)
+	streamURL := fmt.Sprintf("http://%s:%d%s?X-Plex-Token=%s", server.Host, server.Port, partKey, url.QueryEscape(server.PlexToken))
 	return ResolvedSource{URL: streamURL}, nil
 }
 

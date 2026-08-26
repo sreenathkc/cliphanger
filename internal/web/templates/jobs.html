@@ -28,6 +28,7 @@
   <div class="muted" style="margin-top:6px">
     {{.Source.ServerID}} · item {{.Source.ItemID}} · {{.TimestampSeconds}}s, {{.SpanSeconds}}s span, {{.FPS}}fps
     {{if eq .State "done"}} · {{.FrameCount}} frames · {{.ClipBytes}} bytes{{end}}
+    {{with .Duration}} · took {{.}}{{end}}
   </div>
   {{if .Error}}
   <div class="flash error" style="margin-top:10px; margin-bottom:0;">{{.Error}}</div>
@@ -46,7 +47,7 @@
   </div>
   {{end}}
   <div style="margin-top:12px">
-    <form class="inline" method="post" action="/ui/jobs/{{.CaptureID}}/delete" onsubmit="return confirm('Delete this job and its media?')">
+    <form class="inline" method="post" action="/ui/jobs/{{.CaptureID}}/delete" onsubmit="if (!confirm('Delete this job and its media?')) return false; submitFormSecurely(event, this); return false;">
       <button type="submit" class="danger">Delete</button>
     </form>
   </div>

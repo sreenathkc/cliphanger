@@ -1,0 +1,16 @@
+{{define "login"}}
+<div class="card" style="max-width:340px; margin:64px auto 0;">
+  <h1 style="text-align:center; margin-bottom:4px">CLIP<span style="color:var(--accent)">HANGER</span></h1>
+  <p class="muted" style="text-align:center; margin:0 0 20px">Sign in to continue</p>
+  <form method="post" action="/ui/login" onsubmit="submitFormSecurely(event, this); return false;">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label for="username">Username</label>
+    <input type="text" name="username" id="username" autocomplete="username" autofocus required>
+    <label for="password">Password</label>
+    <input type="password" name="password" id="password" autocomplete="current-password" required>
+    <div style="margin-top:16px">
+      <button type="submit" style="width:100%">Log in</button>
+    </div>
+  </form>
+</div>
+{{end}}

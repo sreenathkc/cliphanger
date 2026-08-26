@@ -1,0 +1,75 @@
+{{define "security"}}
+<h1>Security</h1>
+<p class="lede">Everything about who can get into ClipHanger — the API key clients use, and the optional local login for this web UI itself.</p>
+
+<h2>API key</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">Clients (like DemoFlex) send this in the <span class="mono">X-Api-Key</span> header. Rotating it immediately locks out anyone using the old one.</p>
+  <div class="keybox">
+    <code class="mono" id="apiKeyValue" style="flex:1; word-break:break-all;">{{.APIKey}}</code>
+    <button type="button" class="secondary copy-btn" onclick="copyField('apiKeyValue', this)" title="Copy API key" aria-label="Copy API key">⧉</button>
+  </div>
+  <form method="post" action="/ui/security/apikey/rotate" style="margin-top:10px" onsubmit="if (!confirm('Rotate the API key? Every client using the current one will stop working until it is updated.')) return false; submitFormSecurely(event, this); return false;">
+    <button type="submit" class="secondary">Rotate key</button>
+  </form>
+</div>
+
+<h2>Local login</h2>
+<div class="card">
+  <p class="muted" style="margin-top:0">
+    ClipHanger's web UI is open on your network by default — no login wall unless you turn one
+    on here. Enabling this asks for a username and password every time this Setup/Jobs/Health/
+    Security UI is opened, even from inside your own network. It's <strong>separate</strong>
+    from the API key above — that keeps working for DemoFlex and any other API client exactly
+    as before, whether this is on or off.
+  </p>
+  <form method="post" action="/ui/security/login" onsubmit="return confirmLocalLoginSave(event, this);">
+    <label class="row" style="cursor:pointer">
+      <span>Require login on this web UI</span>
+      <input type="checkbox" name="enabled" id="localLoginEnabled" style="width:auto" {{if .LocalLoginEnabled}}checked{{end}}>
+    </label>
+
+    <label for="loginUsername">Username</label>
+    <input type="text" name="username" id="loginUsername" value="{{.LoginUsername}}" autocomplete="username">
+
+    <label for="loginPassword">Password{{if .HasStoredPassword}} <span class="muted">(leave blank to keep the current one)</span>{{end}}</label>
+    <input type="password" name="password" id="loginPassword" autocomplete="new-password" placeholder="{{if .HasStoredPassword}}••••••••{{else}}Choose a password{{end}}">
+
+    <label for="loginPasswordConfirm">Confirm password</label>
+    <input type="password" id="loginPasswordConfirm" autocomplete="new-password">
+
+    <div style="margin-top:16px">
+      <button type="submit">Save</button>
+    </div>
+  </form>
+  <p class="hint" style="margin-top:16px">
+    <strong>Locked out?</strong> Stop the container, open <span class="mono">store.json</span> in your mounted
+    data volume, set <span class="mono">"localLoginEnabled": false</span>, and restart.
+  </p>
+  {{if .LocalLoginEnabled}}
+  <form method="post" action="/ui/logout" style="margin-top:12px" onsubmit="submitFormSecurely(event, this); return false;">
+    <button type="submit" class="secondary">Log out</button>
+  </form>
+  {{end}}
+</div>
+
+<script>
+  // Client-side confirmation that the two password fields actually
+  // match, before the server ever sees either one — a typo here is
+  // otherwise invisible until the NEXT login attempt fails, by which
+  // point there's no way to tell which of the two fields was wrong.
+  // Only checked when a password was actually typed; leaving both blank
+  // (keeping the existing password) has nothing to compare.
+  function confirmLocalLoginSave(event, form) {
+    const password = document.getElementById('loginPassword').value;
+    const confirm = document.getElementById('loginPasswordConfirm').value;
+    if (password && password !== confirm) {
+      event.preventDefault();
+      showToast("Passwords don't match.", true);
+      return false;
+    }
+    submitFormSecurely(event, form);
+    return false;
+  }
+</script>
+{{end}}

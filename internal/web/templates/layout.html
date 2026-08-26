@@ -108,17 +108,135 @@
 <body>
 <header>
   <div class="brand">CLIP<span>HANGER</span></div>
+  {{if not .HideNav}}
   <nav>
     <a href="/ui/setup" class="{{if eq .Nav "setup"}}active{{end}}">Setup</a>
     <a href="/ui/jobs" class="{{if eq .Nav "jobs"}}active{{end}}">Jobs</a>
     <a href="/ui/health" class="{{if eq .Nav "health"}}active{{end}}">Health</a>
+    <a href="/ui/security" class="{{if eq .Nav "security"}}active{{end}}">Security</a>
   </nav>
+  {{end}}
 </header>
 <main>
   {{if .Flash}}<div class="flash {{if .FlashError}}error{{end}}">{{.Flash}}</div>{{end}}
   {{.Content}}
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script>
+  // Shared across every page (2026-08-22, moved here from setup.html
+  // 2026-08-24 once jobs.html needed it too, see submitFormSecurely
+  // below) — brief feedback for an action with nothing else to show
+  // for it, targeting the #toast div right above.
+  function showToast(message, isError) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.toggle('error', !!isError);
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  // Submits a <form> via fetch() instead of a native browser POST
+  // (2026-08-24, real report: "whenever I try to delete something on
+  // cliphanger it asks... information you are about to send is not
+  // secure" — Safari's insecure-form warning, tied to an actual HTML
+  // form submission/navigation over HTTP, not to an arbitrary JS
+  // network request). This service is deliberately plain HTTP on the
+  // LAN, not TLS (docs/DECISIONS.md's "Web UI is open by default"
+  // entry) — switching every action here off native <form> submission
+  // sidesteps the warning without adding TLS this self-hosted tool was
+  // never meant to need.
+  //
+  // `event.preventDefault()` has to run SYNCHRONOUSLY, before any
+  // `await` — an async function's return value is a Promise, and
+  // `onsubmit="return anAsyncFn(...)"` would hand the browser a
+  // (truthy) Promise object instead of `false`, which does NOT
+  // suppress the native submit. So this takes the event directly and
+  // prevents it immediately; the actual fetch happens after, fire-and-
+  // forget from the browser's perspective.
+  //
+  // `fetch()` follows redirects by default, and `response.url` reflects
+  // the FINAL url after following one — every one of these forms'
+  // handlers already responds with `redirectWithFlash(...)`, so this
+  // reproduces the exact same "POST, then land wherever the redirect
+  // points, showing its flash message" a native form submit already
+  // gave, with zero server-side changes needed.
+  function submitFormSecurely(event, form) {
+    event.preventDefault();
+    (async () => {
+      const params = new URLSearchParams(new FormData(form));
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params,
+        });
+        window.location.href = response.url;
+      } catch (err) {
+        showToast('Request failed — check your connection and try again.', true);
+      }
+    })();
+  }
+
+  // Copy-to-clipboard for token/key fields — moved here 2026-08-25 once
+  // security.html needed it for the API key box too, same pattern
+  // showToast/submitFormSecurely already went through (see their own
+  // comments). Originally added 2026-08-22, rebuilt 2026-08-24 per direct
+  // report: "It didn't work when I tried from phone few times" — with
+  // zero feedback either way. Root cause: `navigator.clipboard` needs a
+  // secure context (HTTPS), and this UI is normally reached over plain
+  // HTTP on the LAN (http://<nas-ip>:8420) — on iOS Safari that makes
+  // `navigator.clipboard` simply undefined, so the old code threw
+  // immediately and silently, no error shown, no fallback. Now: try the
+  // modern API only when it's actually available, fall back to the old
+  // execCommand('copy') technique (works over plain HTTP, still broadly
+  // supported despite being deprecated) otherwise — and either way, show
+  // a real toast so success/failure is never silent again.
+
+  function legacyCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    // Off-screen, not display:none — iOS Safari won't select/copy an
+    // element that isn't actually laid out.
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.left = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function copyField(elementId, btn) {
+    const el = document.getElementById(elementId);
+    // Works for both a real <input> (Plex/Jellyfin token fields) and a
+    // plain <code> display element (the API key box, which isn't an
+    // input at all) — 'value' only exists on the former.
+    const text = 'value' in el ? el.value : el.textContent;
+    if (!text) return;
+
+    const onSuccess = () => {
+      const original = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = original; }, 1200);
+      showToast('Copied to clipboard');
+    };
+    const onFailure = () => showToast("Couldn't copy — select and copy the text manually.", true);
+
+    if (window.isSecureContext && navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+        legacyCopy(text) ? onSuccess() : onFailure();
+      });
+    } else {
+      legacyCopy(text) ? onSuccess() : onFailure();
+    }
+  }
+</script>
 </body>
 </html>
 {{end}}

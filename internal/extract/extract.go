@@ -67,6 +67,21 @@ func (s Source) inputArgs(seekSeconds int) []string {
 	return args
 }
 
+// inputArgsWithDuration is inputArgs plus an INPUT-side -t (2026-08-24,
+// real bug fix — see Clip's own comment for the full story). Both -ss
+// and -t have to sit before -i for the same reason: placed after -i
+// they become OUTPUT options instead, measured against whatever
+// timeline the output filter chain produces rather than real decode
+// time — fine for -ss (nothing downstream rescales where playback
+// starts), but wrong for -t once setpts is in the filter chain, which
+// is exactly Clip's case.
+func (s Source) inputArgsWithDuration(seekSeconds, durationSeconds int) []string {
+	args := []string{"-ss", strconv.Itoa(seekSeconds), "-t", strconv.Itoa(durationSeconds)}
+	args = append(args, s.ExtraInputArgs...)
+	args = append(args, "-i", s.URL)
+	return args
+}
+
 // probeInputArgs is inputArgs WITHOUT -ss (bug found via a local smoke
 // test, not caught by reading docs alone): ffprobe doesn't support -ss
 // as a seek option the way ffmpeg does — it just fails outright
@@ -162,6 +177,16 @@ type ClipResult struct {
 	Bytes      int
 }
 
+// targetBitrateKbps is what every clip encodes at, regardless of source
+// resolution/HDR/content (2026-08-24, see Clip's own doc comment for the
+// full "why constant bitrate, not CRF" reasoning). 200 kbps at 480p/10fps
+// lands in the middle of what real CRF-23 encodes on this same box
+// actually varied across (roughly 75-310 kbps depending on content) —
+// picked for a reasonable size/quality balance for a short preview clip,
+// not derived from any harder requirement. spanSeconds × this ÷ 8 is the
+// file size every clip should now land close to.
+const targetBitrateKbps = 200
+
 // Clip writes an H.264 MP4 to outPath — changed from an animated GIF
 // (2026-08-23, per direct request, after a real duration/size
 // conversation): a client wanted "60 seconds of the scene, not the
@@ -198,19 +223,84 @@ type ClipResult struct {
 // compression), not an error — callers pass whatever
 // Store.DefaultSpeedMultiplier() resolves to, which is never actually
 // invalid, but this is a cheap defensive floor regardless.
+//
+// -t moved to an INPUT option, via inputArgsWithDuration (2026-08-24,
+// real bug fix, found from a live job that hung until JOB_TIMEOUT_SECONDS
+// killed it): it used to be appended below alongside the OUTPUT flags,
+// after the -vf filter chain in ffmpeg's own option ordering — meaning
+// it bounded the OUTPUT stream's timeline, not real decode time. But
+// setpts has already divided that timeline by speedMultiplier by the
+// time -t evaluates it, so reaching sourceSpanSeconds of OUTPUT time
+// required decoding sourceSpanSeconds × speedMultiplier of actual
+// SOURCE — confirmed against a real done job at speedMultiplier=2: it
+// produced a 400-frame/40s clip, not the 200-frame/20s spanSeconds=20
+// calls for. At speedMultiplier=3 that's 9× spanSeconds of real
+// 4K/HEVC decode instead of the intended 3×, which is what was
+// actually timing out — not "3x slower" as the multiplier alone would
+// suggest. As an INPUT option, -t bounds real decode time directly —
+// read exactly sourceSpanSeconds of source, then let setpts/fps
+// compress that back down to spanSeconds of output, matching the doc
+// comment above and docs/API.md's fixed output spec.
+//
+// A SECOND -t, spanSeconds this time, ALSO stays as an OUTPUT option
+// below (2026-08-24, same-day follow-up bug — the INPUT -t above fixed
+// real decode/timeout cost but left the MP4's own container-level
+// duration metadata (mvhd/tkhd, what QuickTime/VLC/AVFoundation actually
+// read, not what ffprobe's `format=duration` recomputes from packets)
+// wrong: it kept reporting roughly "how much of the source was left
+// from the seek point to the end of the movie" — confirmed directly, a
+// real clip's own container header claimed ~3349s/55min on an actual
+// ~20s-of-content file. That silently broke two real things downstream:
+// QuickTime/VLC showing a nonsense duration, and DemoFlex's poster
+// picker (ClipHangerMediaClient.decodeVideoFrames) sampling 8 frame
+// times spread across that bogus duration — 7 of the 8 landing well
+// past the file's real content and failing outright, leaving exactly 1
+// usable frame, which is why "no thumbnail picker" kept recurring even
+// after two rounds of unrelated staleness fixes. This output -t doesn't
+// change what actually gets DECODED (already correctly bounded above);
+// it just tells the muxer the true length of what it's writing, instead
+// of leaving the container to inherit a duration hint from the
+// (differently-scoped) input stream.
+//
+// Constant BITRATE, not CRF (2026-08-24, per direct request — "a 1080
+// movie and a 4k UHD HDR movie... ideally both format should generate
+// same file output"). CRF targets constant QUALITY, spending however
+// many bits a scene actually needs — real evidence from this box: two
+// SDR sources at the identical spanSeconds/fps produced 186829 and
+// 1194204 bytes, a 6x spread, purely from one being a busier scene than
+// the other. Source resolution/HDR were never the real driver (`scale`
+// already normalizes every source to ≤480px wide, `-pix_fmt yuv420p`
+// already flattens every source to 8-bit regardless of HDR) — content
+// complexity was. `-b:v`/`-maxrate`/`-bufsize` targets a fixed bitrate
+// instead, so every clip converges on roughly the same file size
+// (spanSeconds × targetBitrateKbps ÷ 8) regardless of what the source
+// looked like — the trade-off is a busy scene now gets compressed
+// harder (softer motion) instead of growing the file, and a static
+// scene "wastes" bits it didn't need instead of shrinking — a
+// deliberate size-over-quality-consistency call for this use case
+// (short preview clips, not the movie itself).
 func Clip(ctx context.Context, src Source, atSeconds, spanSeconds, fps, speedMultiplier int, outPath string) (ClipResult, error) {
 	if speedMultiplier < 1 {
 		speedMultiplier = 1
 	}
 	sourceSpanSeconds := spanSeconds * speedMultiplier
-	args := src.inputArgs(atSeconds)
+	args := src.inputArgsWithDuration(atSeconds, sourceSpanSeconds)
 	filter := fmt.Sprintf("setpts=PTS/%d,fps=%d,scale='min(480,iw)':-2:flags=lanczos", speedMultiplier, fps)
+	bitrate := fmt.Sprintf("%dk", targetBitrateKbps)
 	args = append(args,
-		"-t", strconv.Itoa(sourceSpanSeconds), "-an",
+		"-t", strconv.Itoa(spanSeconds),
+		"-an",
 		"-vf", filter,
 		"-c:v", "libx264",
 		"-preset", "veryfast",
-		"-crf", "23",
+		"-b:v", bitrate,
+		"-maxrate", bitrate,
+		// 2x the target bitrate — a short clip needs the VBV buffer big
+		// enough to absorb one busy second without visibly stalling
+		// quality, but not so big that a whole clip's worth of "saved up"
+		// headroom lets size run away on a genuinely hard scene, which
+		// would defeat the entire point of switching off CRF above.
+		"-bufsize", fmt.Sprintf("%dk", targetBitrateKbps*2),
 		"-pix_fmt", "yuv420p",
 		"-movflags", "+faststart",
 		"-y", outPath,
