@@ -8,7 +8,9 @@ Preferred: use GitHub's private reporting — go to this repo's **Security**
 tab → **Report a vulnerability**. That opens a private advisory only the
 maintainer can see until it's resolved.
 
-If that's not available to you, email **sreenathkc@gmail.com** with a
+If that's not available to you, email
+**52261820+sreenathkc@users.noreply.github.com** (GitHub's private relay
+— it reaches the maintainer without exposing a personal address) with a
 description of the issue and, if possible, steps to reproduce. You should
 get an acknowledgement within a few days — this is a maintained solo/hobby
 project, not a company with an SLA, so please be patient.
