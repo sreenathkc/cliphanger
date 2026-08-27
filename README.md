@@ -299,6 +299,7 @@ curl -H "X-Api-Key: $KEY" http://your-host:8420/health
 | [`docs/API.md`](docs/API.md) | The HTTP contract — endpoints, job model, output spec |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | What's already settled, and the reasoning behind it |
 | [`docs/SERVER-NOTES.md`](docs/SERVER-NOTES.md) | Real Plex/Kodi/Jellyfin API shapes, ffmpeg invocations, and the traps |
+| [`SECURITY.md`](SECURITY.md) | How to report a vulnerability |
 
 ## Clients
 
@@ -333,6 +334,11 @@ rediscover the same constraints `docs/DECISIONS.md` already covers.
 
 ## Licence
 
-TBD before first public release. Note that ffmpeg is an external
-dependency and is deliberately **not** redistributed — see
-`docs/DECISIONS.md`.
+[MIT](LICENSE) — permissive, no restriction on self-hosting, forking, or
+commercial use. Note that ffmpeg is an external dependency and is
+deliberately **not** redistributed — see `docs/DECISIONS.md`.
+
+## Security
+
+Found a vulnerability? See [`SECURITY.md`](SECURITY.md) for how to
+report it privately rather than as a public Issue.

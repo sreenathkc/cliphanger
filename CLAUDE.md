@@ -1,8 +1,10 @@
 # CLAUDE.md — ClipHanger
 
-Persistent context for whoever (human or model) builds this. **Nothing
-here has been implemented yet.** This folder is a design handoff, not a
-codebase.
+Persistent context for whoever (human or model) works on this. The
+service is built and running in production (a real Synology NAS
+deployment, see `docs/DECISIONS.md`'s deployment notes) — this file is
+ground rules for extending it, not a design handoff for starting from
+scratch.
 
 Read `docs/API.md` (the contract), `docs/DECISIONS.md` (what is already
 settled and why) and `docs/SERVER-NOTES.md` (real API shapes and traps)
