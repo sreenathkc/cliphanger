@@ -208,6 +208,20 @@ export CLIPHANGER_NAS_PATH=/volume1/docker/cliphanger   # optional, this is the 
 ./deploy-to-synology-nas.sh
 ```
 
+**Performance note:** Synology's own CPUs (ARM or the smaller Celeron/
+Ryzen embedded chips most models ship with) are modest, and ClipHanger's
+ffmpeg encode is 100% software — no NVENC/QuickSync/VAAPI, no use of
+Synology's own hardware transcode chip either (see Status below). In
+practice, on this class of hardware, one job at a time genuinely
+performs best — running several extractions in parallel just makes each
+one slower rather than finishing more of them sooner, since they're all
+competing for the same few real cores. The **Auto** concurrency default
+(see Features above) picks something higher than 1 on most Synology
+boxes, since it only looks at core count, not how weak those cores
+actually are. If jobs feel slower than expected on a Synology NAS,
+override it to **1** from the Setup page's Concurrency section (or set
+`WORKERS=1` before first run) rather than trusting Auto here.
+
 ### Option 4: Unraid
 
 There's no Community Applications template yet (that needs a published
