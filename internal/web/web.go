@@ -35,6 +35,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sreenathkc/cliphanger/docs"
 	"github.com/sreenathkc/cliphanger/internal/backend"
 	"github.com/sreenathkc/cliphanger/internal/extract"
 	"github.com/sreenathkc/cliphanger/internal/model"
@@ -146,6 +147,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /jobs/{captureId}/thumb", s.withLogging(s.requireLogin(s.handleThumb)))
 	s.mux.HandleFunc("GET /jobs/{captureId}/log", s.withLogging(s.requireLogin(s.handleJobLog)))
 	s.mux.HandleFunc("GET /health", s.withLogging(s.requireLogin(s.handleHealth)))
+	s.mux.HandleFunc("GET /help", s.withLogging(s.requireLogin(s.handleHelp)))
 
 	// Security — API key + local login, split out of Setup 2026-08-25
 	// (per direct license to reorganize: "you can change the menu items/
@@ -765,6 +767,19 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"FFmpeg": extract.Version(r.Context()),
 			"Queued": queued, "Running": running, "Failed": failed,
 		},
+	})
+}
+
+// handleHelp is deliberately the simplest page in this package — no
+// store/queue reads, just an intro and the API contract. The contract
+// text is docs.APIMarkdown, embedded straight from docs/API.md (see
+// docs/docs.go) so this page can never drift out of sync with the real
+// one developers/CLAUDE.md read — there is exactly one copy of that
+// text in the whole repo.
+func (s *Server) handleHelp(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "help", map[string]interface{}{
+		"Title": "Help", "Nav": "help",
+		"APIMarkdown": docs.APIMarkdown,
 	})
 }
 

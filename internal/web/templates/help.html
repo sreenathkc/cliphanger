@@ -1,0 +1,30 @@
+{{define "help"}}
+<h1>Help</h1>
+<p class="lede">What ClipHanger is, and the full API contract clients talk to.</p>
+
+<div class="card">
+  <p>ClipHanger extracts stills and short clips from your media library
+  at a given timestamp. Point it at Plex, Kodi or Jellyfin, ask for
+  "item X at 1:35:00", and get back a still and a short clip — plus
+  what the file actually is (4K, HDR10, Atmos, DTS:X). Self-hosted,
+  single container, no cloud, no accounts beyond your own media
+  servers.</p>
+  <p>Plenty of clients want a frame from a specific moment and can't get
+  one on their own — iOS is the motivating case: its media stack has no
+  Matroska support, so <code>.mkv</code> (most of a real media library)
+  simply won't decode on-device, and there's no way to grab a frame out
+  of a transcoded HLS stream either. ffmpeg on an always-on box has none
+  of these problems. ClipHanger does the work once, keeps the result,
+  and hands it to whichever client asked — without that client ever
+  touching a media server's credentials, a NAS mount, or a path
+  translation.</p>
+  <p class="muted">Configure servers and the API key on the
+  <a href="/ui/setup">Setup</a> page — this page is documentation only,
+  nothing here is configurable.</p>
+</div>
+
+<h2>API Documentation</h2>
+<div class="card">
+  <pre class="mono" style="white-space: pre-wrap; overflow-x: auto; margin: 0;">{{.APIMarkdown}}</pre>
+</div>
+{{end}}
