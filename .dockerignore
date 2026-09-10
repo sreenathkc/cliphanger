@@ -1,5 +1,6 @@
 .git
 .gitignore
-docs
 *.md
+docs/*.md
+!docs/API.md
 data/

@@ -26,6 +26,12 @@ WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
+# The `docs` package (docs/docs.go) go:embeds docs/API.md so the web
+# UI's Help page can render the real API contract without a hand-copied
+# duplicate — internal/web imports it, so the build needs it too. Paired
+# with a `!docs/API.md` un-ignore in .dockerignore (the rest of docs/ is
+# still excluded from the build context).
+COPY docs ./docs
 
 ARG TARGETOS
 ARG TARGETARCH
