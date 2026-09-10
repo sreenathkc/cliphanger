@@ -31,10 +31,17 @@ func NewKodiBackend() *KodiBackend {
 func (b *KodiBackend) Kind() model.ServerKind { return model.KindKodi }
 
 type kodiRPCRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      int         `json:"id"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id"`
+	Method  string `json:"method"`
+	// omitempty is load-bearing: a param-less call (JSONRPC.Ping, from
+	// TestConnection) passes nil here, and Kodi 19+ rejects an explicit
+	// "params": null with -32600 "Invalid request." — per JSON-RPC 2.0,
+	// params when present must be an array or object, never null. Verified
+	// against Kodi 21.2: `{"method":"JSONRPC.Ping","params":null}` fails,
+	// the same request without the key returns "pong". Symptom before this
+	// fix was "unexpected reply from Kodi: \"\"" when adding a Kodi server.
+	Params interface{} `json:"params,omitempty"`
 }
 
 type kodiMovieDetailsResponse struct {
