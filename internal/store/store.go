@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -605,6 +606,17 @@ func (s *Store) SubmitJob(j model.Job, force bool) (state model.JobState, accept
 
 // ListJobs returns every job, newest-updated first, optionally filtered
 // by state and/or only those updated after `since`.
+//
+// The "newest-updated first" part of that promise was never actually
+// true until now (bug fixed 2026-09-11, real report against the Jobs
+// page: "change the sort order of Jobs item descending, meaning latest
+// job at top") — this just returned `s.data.Jobs` in storage order,
+// which is insertion order (oldest-created first) and only ever
+// happened to look sorted for someone submitting jobs one at a time and
+// never re-running an old one; anything that updates an EXISTING job
+// (a retry, Force Refresh) leaves it sitting wherever it was first
+// inserted rather than jumping to the top despite being the most
+// recently touched job in the whole queue.
 func (s *Store) ListJobs(stateFilter model.JobState, since time.Time) []model.Job {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -618,6 +630,7 @@ func (s *Store) ListJobs(stateFilter model.JobState, since time.Time) []model.Jo
 		}
 		out = append(out, j)
 	}
+	sort.Slice(out, func(i, k int) bool { return out[i].UpdatedAt.After(out[k].UpdatedAt) })
 	return out
 }
 
