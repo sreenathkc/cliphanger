@@ -117,10 +117,13 @@ Unraid's Community Applications) become possible too — not yet.
   have it with `docker --version` in a terminal.
 - **Port 8420 free** on whichever machine will run it (or pick a
   different host port when you map it — see below).
-- **Network reachability**: the machine running ClipHanger needs to be
-  able to reach your Plex/Kodi/Jellyfin server(s) directly over your
-  LAN, and vice versa isn't needed at all — ClipHanger is the one that
-  connects out, nothing connects in except a client using the API.
+- **Network reachability, both directions**: the machine running
+  ClipHanger needs to reach your Plex/Kodi/Jellyfin server(s) directly
+  over your LAN, AND whatever client will call its API (DemoFlex, a
+  browser, `curl`) needs to reach IT — on Windows/macOS specifically,
+  this second direction needs a real published port, not the default
+  compose file as-is; see the Windows/macOS section under Option 1
+  below before you conclude "it's up but nothing can reach it."
 
 ### Option 1: Docker Compose (recommended)
 
@@ -133,25 +136,80 @@ using the `git clone` line below).
 ```bash
 git clone https://github.com/sreenathkc/cliphanger.git
 cd cliphanger
+```
+
+Before running `docker compose up`, pick the networking mode for your
+OS — this is the one setting that genuinely differs by platform, and
+getting it wrong is the single most common "it built and started, but
+nothing can reach it" problem (a real one: see the Windows section
+below).
+
+#### Linux (Docker Engine, a home server, a mini PC, etc.)
+
+No edit needed — the shipped `docker-compose.yml` already uses host
+networking (`network_mode: host`), which is both simpler AND the
+correct choice here: under a bridge network, ClipHanger's outbound
+requests to a media server on the same LAN would carry a Docker-internal
+source IP, which Plex doesn't recognize as local and fast-rejects with
+a 500. Host networking makes ClipHanger indistinguishable from any
+other process on the box — nothing else to configure.
+
+```bash
 docker compose up -d --build
 ```
 
-What each line does: the first downloads the source into a new
-`cliphanger` folder; the second moves into it; the third reads
-`docker-compose.yml`, builds the container image from the `Dockerfile`
-in this repo, and starts it in the background (`-d`).
+(Running this on a Synology NAS or Unraid specifically? Their own
+sections below cover a couple of platform quirks worth knowing —
+otherwise this is the same command.)
 
-The shipped `docker-compose.yml` uses host networking on Linux
-(`network_mode: host`) rather than a bridge + port mapping — see its own
-comments for why: under a bridge network, ClipHanger's outbound
-requests to a media server on the same LAN carry a Docker-internal
-source IP, which Plex doesn't recognize as local and fast-rejects with a
-500. Host networking makes ClipHanger indistinguishable from any other
-process on the box — nothing else to configure. **Docker Desktop on
-macOS/Windows doesn't support host networking the same way** — if
-you're on one of those, open `docker-compose.yml` in a text editor
-first and uncomment the `ports: ["8420:8420"]` line (and comment out
-`network_mode: host`) before running the command above.
+#### Windows or macOS (Docker Desktop)
+
+**Docker Desktop doesn't support host networking the same way Linux
+does.** Leaving `network_mode: host` as-is here means the container is
+reachable from `localhost` on the SAME machine only — never from your
+phone, a tablet, or another computer on the LAN — which is almost never
+what you actually want for a service other devices need to reach (this
+is exactly the failure mode behind "I can open it on this PC but not
+from my phone").
+
+Open `docker-compose.yml` in a text editor and swap which lines are
+commented out, so it reads:
+
+```yaml
+    # network_mode: host
+    ports:
+      - "8420:8420"
+```
+
+Then:
+
+```bash
+docker compose up -d --build
+```
+
+**Windows Firewall**: the first time a container publishes a port,
+Windows normally prompts to allow it through — click **Allow**. If you
+missed that prompt (or another device still can't reach it), check
+**Windows Defender Firewall → Allow an app through firewall** and make
+sure **Docker Desktop Backend** is checked for both Private and Public
+networks.
+
+**Verify it's reachable from the actual LAN, not just from this
+machine** — Docker Desktop can make `http://localhost:8420` work even
+when nothing outside the box can reach it, so that alone doesn't prove
+the port mapping is right. From a DIFFERENT device on the same network
+(your phone's browser, another computer's terminal):
+
+```bash
+curl http://<this machine's LAN IP>:8420/health
+```
+
+`{"status":"ok"}` means it's genuinely reachable — go to **First-time
+setup** below. A timeout or connection failure means the port isn't
+actually published to the LAN yet: recheck the compose edit above and
+the firewall step, and confirm you're using this machine's real LAN IP
+(`ipconfig` on Windows, `ifconfig`/`ip addr` on macOS/Linux — not
+`127.0.0.1` or `localhost`).
 
 Once it's up, skip to **First-time setup** below.
 
@@ -171,11 +229,14 @@ docker run -d --name cliphanger \
 
 `docker build` compiles the image and tags it `cliphanger` so the next
 command can find it. `-d` runs it in the background; `--network host`
-is the same host-networking Compose uses (Linux only — on macOS/Windows
-replace it with `-p 8420:8420` instead); `-v "$(pwd)/data:/data"` is
-where the job queue and generated media are stored, on your machine, so
-they survive a container restart; `--restart unless-stopped` brings it
-back up automatically after a reboot.
+is the same host-networking Compose uses (**Linux only** — on
+macOS/Windows replace it with `-p 8420:8420` instead, and see Option
+1's Windows/macOS section above for the firewall step and how to check
+it's actually reachable from the LAN, not just this machine);
+`-v "$(pwd)/data:/data"` is where the job queue and generated media are
+stored, on your machine, so they survive a container restart;
+`--restart unless-stopped` brings it back up automatically after a
+reboot.
 
 ### Option 3: Synology NAS
 
