@@ -30,6 +30,15 @@
     {{if eq .State "done"}} · {{.FrameCount}} frames · {{.ClipBytes}} bytes{{end}}
     {{with .Duration}} · took {{.}}{{end}}
   </div>
+  <!-- The actual file/URL this job resolved to (2026-09-11) — empty
+       until Resolve succeeds (still queued, or the server/item itself
+       couldn't be found), and already redacted of any credential by
+       the time it ever reached Job.ResolvedSource. word-break, not
+       nowrap: a real path/URL here easily runs past card width and this
+       is exactly the thing someone opens this page to actually read. -->
+  {{with .ResolvedSource}}
+  <div class="mono muted" style="margin-top:4px; font-size:11.5px; word-break:break-all;">{{.}}</div>
+  {{end}}
   {{if .Error}}
   <div class="flash error" style="margin-top:10px; margin-bottom:0;">{{.Error}}</div>
   {{end}}

@@ -121,15 +121,30 @@ type Job struct {
 	// Setup-page-only for now (no DemoFlex-side per-request control),
 	// so this is effectively always 0/omitted on real submissions,
 	// falling back to Store.DefaultSpeedMultiplier().
-	SpeedMultiplier int        `json:"speedMultiplier,omitempty"`
-	State           JobState   `json:"state"`
-	Error           string     `json:"error,omitempty"`
-	FrameCount      int        `json:"frameCount,omitempty"`
-	StillBytes      int        `json:"stillBytes,omitempty"`
-	ClipBytes       int        `json:"clipBytes,omitempty"`
-	MediaInfo       *MediaInfo `json:"mediaInfo,omitempty"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	CreatedAt       time.Time  `json:"createdAt"`
+	SpeedMultiplier int `json:"speedMultiplier,omitempty"`
+	// ResolvedSource is the actual file/URL a backend resolved
+	// Source.ItemID to, ALREADY REDACTED of any credential
+	// (backend.ResolvedSource.Redacted()) — set once Resolve succeeds,
+	// so it's there for the Jobs list/detail regardless of whether the
+	// job goes on to succeed or fail at the ffmpeg step (2026-09-11,
+	// real report: "the jobs list doesnt show which movie it was or
+	// which file it was used... just shows a uid and some generation
+	// setup details"). Deliberately the resolved FILE, not a movie
+	// title or any other app-supplied metadata — package model has no
+	// concept of either (CLAUDE.md: "a reader of this repo should never
+	// need to know" which client submitted a job), but the file a job
+	// actually read IS this package's own domain data, not something a
+	// client told it. Empty until Resolve runs (still queued, or the
+	// server/item itself couldn't be found at all).
+	ResolvedSource string     `json:"resolvedSource,omitempty"`
+	State          JobState   `json:"state"`
+	Error          string     `json:"error,omitempty"`
+	FrameCount     int        `json:"frameCount,omitempty"`
+	StillBytes     int        `json:"stillBytes,omitempty"`
+	ClipBytes      int        `json:"clipBytes,omitempty"`
+	MediaInfo      *MediaInfo `json:"mediaInfo,omitempty"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	CreatedAt      time.Time  `json:"createdAt"`
 	// StartedAt is when a WORKER actually picked this job up (stamped by
 	// Store.NextQueued, the queued→running transition) — distinct from
 	// CreatedAt, which is when the client submitted it and can sit

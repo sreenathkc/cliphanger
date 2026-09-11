@@ -149,6 +149,7 @@ States: `queued` · `running` · `done` · `failed`
 | `spanSeconds` | int | Clip length. Default 20. |
 | `fps` | int | Clip frame rate. Default 10. |
 | `speedMultiplier` | int? | Reads `spanSeconds × speedMultiplier` of source, time-compressed back down to `spanSeconds` — covers more of a longer scene without a longer clip. Default 2, Setup-page-only in practice: DemoFlex doesn't send this per job (unlike `spanSeconds`), so the server's own configured default governs real submissions. |
+| `resolvedSource` | string? | The actual file/URL `source.itemId` resolved to, already credential-redacted. Set once resolution succeeds — present on a `done` job, and on a `failed` one too if the failure happened after resolving (an ffmpeg error, say) rather than during it (an unknown item, a server that's gone). Absent while still `queued`. |
 | `state` | enum | One of the four above. |
 | `error` | string? | Human-readable reason when `failed`. Null otherwise. |
 | `frameCount` | int? | Frames actually written. **1 means nothing animates — treat as failure.** |

@@ -248,6 +248,15 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 		return
 	}
 	_ = q.store.SetServerReachability(server.ID, true)
+	// Stashed on the LOCAL job var, not its own store write — `fail` (a
+	// closure over this same var) already persists it as part of every
+	// failure from here on, and the final success path at the end of
+	// this function does the same, so this rides along for free either
+	// way. Redacted before it's ever set (2026-09-11, real report: "the
+	// jobs list doesnt show which movie it was or which file it was
+	// used") — see Job.ResolvedSource's own doc comment for why this is
+	// the resolved FILE, not a movie title.
+	job.ResolvedSource = resolved.Redacted()
 
 	src := extract.Source{
 		URL:            resolved.URL,
