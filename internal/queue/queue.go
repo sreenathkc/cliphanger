@@ -244,6 +244,19 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 	resolved, err := be.Resolve(ctx, server, job.Source.ItemID)
 	if err != nil {
 		_ = q.store.SetServerReachability(server.ID, false)
+		// Remembered specifically for KindLocal, whose whole failure
+		// mode here is usually "the configured prefix doesn't match
+		// this item's real path" — see Server.LastAttemptedPath's own
+		// doc comment. Best-effort: re-fetches `server` fresh rather
+		// than mutating the copy already in hand, so a concurrent Setup
+		// page edit to this same server (rare, but possible) isn't
+		// silently clobbered by a stale copy's other fields.
+		if server.Kind == model.KindLocal {
+			if fresh, ok := q.store.GetServer(server.ID); ok {
+				fresh.LastAttemptedPath = job.Source.ItemID
+				_, _ = q.store.PutServer(fresh)
+			}
+		}
 		fail(fmt.Errorf("resolving source: %w", err))
 		return
 	}

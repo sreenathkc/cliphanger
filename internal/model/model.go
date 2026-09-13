@@ -71,6 +71,16 @@ type Server struct {
 	// work for a specific item.
 	LocalPathFrom string `json:"localPathFrom,omitempty"`
 	LocalPathTo   string `json:"localPathTo,omitempty"`
+	// LastAttemptedPath is the raw path a KindLocal server's own
+	// LocalBackend.Resolve most recently saw and couldn't map — the
+	// literal itemID a client submitted, before any prefix check.
+	// Added 2026-09-13 (real report: setting LocalPathFrom by typing it
+	// blind was "still puzzling... how do I know [it]?") specifically so
+	// the Setup page can show it and offer to adopt it as LocalPathFrom
+	// in one click, instead of asking someone to dig a failed job's
+	// error out of the Jobs page by hand. Meaningless for every other
+	// Kind — nothing sets it for them.
+	LastAttemptedPath string `json:"lastAttemptedPath,omitempty"`
 
 	// Set by the "Test connection" button in the web UI and refreshed
 	// opportunistically whenever a job resolves against this server.

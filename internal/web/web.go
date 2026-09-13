@@ -32,7 +32,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sreenathkc/cliphanger/docs"
@@ -138,6 +140,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /setup/plex/servers", s.withLogging(s.requireLogin(s.handleListPlexServers)))
 	s.mux.HandleFunc("POST /setup/servers/{id}/test", s.withLogging(s.requireLogin(s.handleTestServer)))
 	s.mux.HandleFunc("POST /setup/servers/{id}/delete", s.withLogging(s.requireLogin(s.handleDeleteServer)))
+	s.mux.HandleFunc("POST /setup/servers/{id}/adopt-path", s.withLogging(s.requireLogin(s.handleAdoptPath)))
+	s.mux.HandleFunc("GET /setup/browse", s.withLogging(s.requireLogin(s.handleBrowseMount)))
 	s.mux.HandleFunc("POST /setup/retention", s.withLogging(s.requireLogin(s.handleSetRetention)))
 	s.mux.HandleFunc("POST /setup/clip-duration", s.withLogging(s.requireLogin(s.handleSetClipDuration)))
 	s.mux.HandleFunc("POST /setup/speed-multiplier", s.withLogging(s.requireLogin(s.handleSetSpeedMultiplier)))
@@ -566,6 +570,88 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectWithFlash(w, r, "/ui/setup", "Server removed.", false)
+}
+
+// handleAdoptPath is the other half of Server.LastAttemptedPath (see its
+// own doc comment) — one click to copy the raw path ClipHanger most
+// recently saw and couldn't map into this server's own LocalPathFrom,
+// instead of the user finding and retyping it by hand. Added 2026-09-13,
+// real report: setting up a Local mount by typing both prefixes blind
+// was "still puzzling... how do I know [them]?"
+func (s *Server) handleAdoptPath(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	srv, ok := s.store.GetServer(id)
+	if !ok {
+		redirectWithFlash(w, r, "/ui/setup", "That server no longer exists.", true)
+		return
+	}
+	if srv.LastAttemptedPath == "" {
+		redirectWithFlash(w, r, "/ui/setup", "Nothing learned yet — try generating a preview through this source first.", true)
+		return
+	}
+	srv.LocalPathFrom = srv.LastAttemptedPath
+	if _, err := s.store.PutServer(srv); err != nil {
+		redirectWithFlash(w, r, "/ui/setup", "Couldn't save: "+err.Error(), true)
+		return
+	}
+	redirectWithFlash(w, r, "/ui/setup", fmt.Sprintf("%s's path prefix updated to %q.", srv.Name, srv.LocalPathFrom), false)
+}
+
+type browseEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type browseResponse struct {
+	Path    string        `json:"path"`
+	Parent  string        `json:"parent,omitempty"`
+	Entries []browseEntry `json:"entries"`
+}
+
+// handleBrowseMount lists a directory's contents INSIDE THIS CONTAINER —
+// the Setup page's own folder picker for a Local mount's "ClipHanger's
+// own path" field, so filling it in means clicking through real folders
+// instead of typing a container path blind (2026-09-13, real report:
+// "how do I know [ClipHanger's own path]?... can we make this easier").
+// Directories only, never files — this exists to choose a FOLDER, and a
+// personal media library can easily have thousands of files in one
+// directory that would just be noise here. Same trust level as the rest
+// of this admin-only web UI (which already shows every configured
+// server's own credentials) — nothing here is reachable by a client,
+// only by whoever can already open Setup, and there's deliberately no
+// path-traversal guard beyond "must be a real directory": the whole
+// point is free browsing of THIS container's own filesystem, the same
+// thing Sonarr/Radarr's own root-folder picker already does.
+func (s *Server) handleBrowseMount(w http.ResponseWriter, r *http.Request) {
+	reqPath := r.URL.Query().Get("path")
+	if reqPath == "" {
+		reqPath = "/"
+	}
+	reqPath = filepath.Clean(reqPath)
+	info, err := os.Stat(reqPath)
+	if err != nil || !info.IsDir() {
+		writeWebJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("%q isn't a readable directory in this container", reqPath)})
+		return
+	}
+	dirEntries, err := os.ReadDir(reqPath)
+	if err != nil {
+		writeWebJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	entries := make([]browseEntry, 0, len(dirEntries))
+	for _, e := range dirEntries {
+		if !e.IsDir() {
+			continue
+		}
+		entries = append(entries, browseEntry{Name: e.Name(), Path: filepath.Join(reqPath, e.Name())})
+	}
+	sort.Slice(entries, func(i, j int) bool { return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name) })
+
+	resp := browseResponse{Path: reqPath, Entries: entries}
+	if parent := filepath.Dir(reqPath); parent != reqPath {
+		resp.Parent = parent
+	}
+	writeWebJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {

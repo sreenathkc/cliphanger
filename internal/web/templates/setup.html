@@ -18,6 +18,15 @@
       {{if .LastReachable}}<span class="pill done">reachable</span>{{else}}<span class="pill failed">unreachable</span>{{end}}
     </div>
   </div>
+  {{if and (eq .Kind "local") .LastAttemptedPath (ne .LastAttemptedPath .LocalPathFrom)}}
+  <div class="flash" style="margin-top:10px; margin-bottom:0;">
+    A recent attempt through this mount used a path that doesn't match your current prefix:
+    <span class="mono">{{.LastAttemptedPath}}</span>
+    <form class="inline" method="post" action="/ui/setup/servers/{{.ID}}/adopt-path" style="margin-top:6px" onsubmit="submitFormSecurely(event, this); return false;">
+      <button type="submit" class="secondary">Use this as the prefix</button>
+    </form>
+  </div>
+  {{end}}
   <div class="row" style="margin-top:12px">
     <span class="muted">{{if not .LastCheckedAt.IsZero}}Last checked {{.LastCheckedAt.Format "Jan 2 15:04"}}{{else}}Never checked{{end}}</span>
     <div class="row" style="gap:8px; width:auto">
@@ -147,14 +156,35 @@
       <label for="mountPathFrom">Path prefix, exactly as your media server reports it</label>
       <input type="text" name="mountPathFrom" id="mountPathFrom" class="mono" placeholder="/volume1/Movies">
       <label for="mountPathTo">ClipHanger's own path to that same folder</label>
-      <input type="text" name="mountPathTo" id="mountPathTo" class="mono" placeholder="/mnt/nas/Movies">
+      <div class="row" style="gap:6px; align-items:stretch">
+        <input type="text" name="mountPathTo" id="mountPathTo" class="mono" style="flex:1" placeholder="/mnt/nas/Movies">
+        <button type="button" class="secondary" onclick="openMountBrowser()">Browse…</button>
+      </div>
+      <!-- Browses THIS CONTAINER's own filesystem via GET /ui/setup/browse
+           (2026-09-13, real report: setting up a Local mount by typing
+           both paths blind was "still puzzling... how do I know [ClipHanger's
+           own path]?"). Only ever shows what's actually mounted in — it
+           can't discover a NAS share Docker itself hasn't been given
+           access to yet (see README's own "Optional: direct disk access"
+           for that separate, one-time step). -->
+      <div id="mount-browser" style="display:none; margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--sunk);">
+        <div class="row" style="margin-bottom:8px">
+          <span id="mount-browser-path" class="mono" style="font-size:12px"></span>
+          <a href="#" onclick="document.getElementById('mount-browser').style.display='none'; return false;" class="muted" style="text-decoration:underline; font-size:12px">Close</a>
+        </div>
+        <div id="mount-browser-list" style="max-height:220px; overflow-y:auto; font-size:13px"></div>
+        <div class="row" style="margin-top:10px; justify-content:flex-end">
+          <button type="button" class="secondary" onclick="chooseMountFolder()">Use this folder</button>
+        </div>
+      </div>
       <p class="hint">
         <strong>The first field has to match exactly</strong> — it's compared as a plain text prefix, not
         resolved or guessed. Use whatever your Plex/Kodi/Jellyfin server itself calls this file's folder (Plex's
         "View XML" → <code class="mono">Part file=</code>, Kodi's own library path, Jellyfin's file path) —
-        not what you assume the real filesystem layout is. Don't have that handy yet? Add this server anyway,
-        try generating a preview for one movie through it, and a failed job's error on the Jobs page will show
-        you the EXACT path that was attempted — copy the matching prefix from there.
+        not what you assume the real filesystem layout is. Don't have that handy yet? Add this server anyway
+        (the "Browse…" button above still works for the field above it), try generating a preview for one movie
+        through it, and this server's own card on this page will show the exact path that was attempted, with a
+        button to adopt it — no more digging through the Jobs page by hand.
       </p>
     </div>
 
@@ -385,6 +415,60 @@
     // basic-fields toggle above, just scoped to the host/port half only
     // (2026-09-12).
     document.getElementById('host-port-fields').style.display = kind === 'local' ? 'none' : 'block';
+  }
+
+  // Local mount's own folder browser (2026-09-13) — walks GET
+  // /ui/setup/browse, which lists directories inside THIS CONTAINER
+  // (see that handler's own doc comment). Deliberately plain
+  // click-to-descend, one level at a time, rather than a full tree —
+  // there's no reason to assume a mounted NAS share is small enough for
+  // a tree view to stay usable, and one level at a time is exactly how
+  // Sonarr/Radarr's own root-folder picker already does this.
+  let mountBrowserPath = '/';
+  function openMountBrowser() {
+    document.getElementById('mount-browser').style.display = 'block';
+    const start = document.getElementById('mountPathTo').value.trim() || '/';
+    browseMountTo(start);
+  }
+  async function browseMountTo(path) {
+    const list = document.getElementById('mount-browser-list');
+    try {
+      const res = await fetch('/ui/setup/browse?path=' + encodeURIComponent(path));
+      const data = await res.json();
+      if (!res.ok) {
+        list.innerHTML = '<div class="muted">' + (data.error || 'Could not list that folder.') + '</div>';
+        return;
+      }
+      mountBrowserPath = data.path;
+      document.getElementById('mount-browser-path').textContent = data.path;
+      list.innerHTML = '';
+      if (data.parent) {
+        const up = document.createElement('div');
+        up.textContent = '⬆ ..';
+        up.style.cssText = 'cursor:pointer; padding:4px 0';
+        up.onclick = () => browseMountTo(data.parent);
+        list.appendChild(up);
+      }
+      if (!data.entries || data.entries.length === 0) {
+        const none = document.createElement('div');
+        none.className = 'muted';
+        none.textContent = 'No subfolders here.';
+        list.appendChild(none);
+      }
+      (data.entries || []).forEach(entry => {
+        const row = document.createElement('div');
+        row.textContent = '📁 ' + entry.name;
+        row.style.cssText = 'cursor:pointer; padding:4px 0';
+        row.onclick = () => browseMountTo(entry.path);
+        list.appendChild(row);
+      });
+    } catch (e) {
+      list.innerHTML = '<div class="muted">Could not reach ClipHanger to list that folder.</div>';
+    }
+  }
+  function chooseMountFolder() {
+    document.getElementById('mountPathTo').value = mountBrowserPath;
+    document.getElementById('mount-browser').style.display = 'none';
   }
 
   // "Sign in with Plex" (2026-08-22) — the default way to fill in
