@@ -356,13 +356,43 @@ what a client actually sends.
 Rather than streaming a file over HTTP from its own media server,
 ClipHanger can read it straight off disk instead — useful as a faster,
 more reliable path when a server's own serving is flaky for a specific
-item (see `docs/DECISIONS.md`). This needs two things, one on the
-container, one in the Setup page.
+item (see `docs/DECISIONS.md`). This needs three things: the container
+needs to actually SEE your media (a volume mount — different steps
+depending on your platform, below), `docker-compose.yml` needs to know
+about that mount, and the Setup page needs a server configured to use
+it. This repo's `docker-compose.yml` doesn't include the mount by
+default, since not every install wants this.
 
-**1. Give the container access to your media.** It has to be able to
-see the actual files, which means adding a volume mount — this repo's
-`docker-compose.yml` doesn't include one by default, since not every
-install wants this. Add a line under the existing `data` volume:
+**1. Give the container access to your media.** Docker only ever sees
+what you explicitly share with it — this is true regardless of platform
+and can't be skipped by any UI. How you get there differs:
+
+- **Linux (Docker Engine, a home server, a NAS itself)** — the simplest
+  case: the host can mount an NFS/SMB share directly, and `docker-compose.yml`
+  bind-mounts that host path straight into the container, no
+  intermediate step. If your NAS shares are already mounted on this
+  host for other purposes (Sonarr/Radarr etc. usually need this too),
+  reuse the same mount point.
+- **Windows (Docker Desktop)** — map the NAS share as a network drive
+  first (most NAS boxes, Synology included, speak SMB even if you also
+  use NFS elsewhere): File Explorer → **This PC** → **Map network
+  drive** → `\\<nas-ip>\<share-name>` → pick a drive letter (e.g. `Z:`).
+  Then Docker Desktop → **Settings → Resources → File sharing** → make
+  sure that drive is allowed. Known rough edge: Docker Desktop's WSL2
+  backend sometimes can't cleanly bind-mount a *mapped* network drive
+  letter — if step 4 below shows an empty/missing folder, the fallback
+  is mounting the SMB share directly inside the WSL2 Linux filesystem
+  instead (`wsl` from PowerShell, then a normal Linux `mount -t cifs`)
+  and pointing the compose volume at that path instead of a drive
+  letter.
+- **macOS (Docker Desktop)** — Finder → **Go → Connect to Server**
+  (`smb://<nas-ip>/<share-name>` or `nfs://<nas-ip>/<path>`), which
+  mounts it under `/Volumes/<share-name>`. Docker Desktop's **Settings →
+  Resources → File sharing** needs that path (or its parent, `/Volumes`)
+  allowed.
+
+**2. Add the mount to `docker-compose.yml`.** One line under the
+existing `data` volume:
 
 ```yaml
     volumes:
@@ -370,18 +400,34 @@ install wants this. Add a line under the existing `data` volume:
       - /volume1/Movies:/mnt/nas/Movies   # host path : container path
 ```
 
-then `docker compose up -d` to pick it up. On **Windows/macOS Docker
-Desktop** specifically, the host path has to be somewhere Docker
-Desktop can already reach — a mapped network drive or mounted share on
-the host itself, then that host path into the container the same way
-(Docker Desktop's own Settings → Resources → File sharing controls
-which host paths it'll allow at all). A plain Linux Docker host can
-bind-mount a network share (NFS/SMB) directly.
+The host side is whatever step 1 gave you — a Linux mount point, a
+Windows drive letter (`Z:\`), or a macOS `/Volumes/...` path. The
+container side is yours to pick; `/mnt/nas/Movies` is just a
+convention. Apply it:
 
-**2. Add a "Local Folder / NAS Mount" server** on the Setup page —
+```
+docker compose up -d
+```
+
+No `--build` needed — this only changes what's mounted, not the image.
+
+**3. Verify the container can actually see it** before touching the
+Setup page — this is the step that catches a mount that silently didn't
+attach:
+
+```
+docker exec <container name> ls /mnt/nas/Movies
+```
+
+(`docker ps` if you don't know the exact container name.) You should
+see your real folders/files. Empty output or an error means the mount
+in step 1 or the compose line in step 2 needs another look before
+anything past this point will work.
+
+**4. Add a "Local Folder / NAS Mount" server** on the Setup page —
 pick that as the Kind, give it a name, and fill in two prefixes: the
 path exactly as your *real* media server (Plex/Kodi/Jellyfin) reports
-it for a file, and the container path from step 1 that points at the
+it for a file, and the container path from step 2 that points at the
 same folder. **The first one has to match exactly** — it's a plain text
 prefix comparison, not resolved or guessed. If you're not sure what
 your media server actually calls that folder, add the mount anyway and
