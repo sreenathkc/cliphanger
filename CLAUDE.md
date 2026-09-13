@@ -42,18 +42,28 @@ client-chosen opaque `captureId`, not by anything with app semantics.
 
 ## Hard rules
 
-- **Never read media off disk — except one narrow, opt-in fallback.**
-  Always stream from the media server over HTTP by default. This
-  removes NAS mounts and path translation entirely, and is why the
-  service works regardless of which machine it runs on. The one
-  exception (2026-08-22): a server can optionally configure
-  `LocalPathFrom`/`LocalPathTo` (a prefix mapping), and a backend may
-  use it ONLY after confirming the HTTP path itself doesn't work for a
-  specific item (today: Kodi's VFS 401-outside-a-source failure — see
-  `internal/backend/kodi.go`). Never use it speculatively, never make it
-  the primary path, and never wire it into a backend without a real,
-  confirmed failure condition to trigger on first — Plex and Jellyfin
-  don't have one yet and shouldn't get this "just in case."
+- **Never read media off disk speculatively, or as a hidden fallback
+  inside another backend.** Always stream from the media server over
+  HTTP by default — this is what lets the service work regardless of
+  which machine it runs on. Direct disk access is opt-in, and comes in
+  two deliberately different shapes, neither of which is "try it just
+  in case":
+  - **Kodi's own narrow rescue** (2026-08-22, unchanged): a Kodi server
+    can optionally configure `LocalPathFrom`/`LocalPathTo`, used ONLY
+    after confirming Kodi's own HTTP path doesn't work for a specific
+    item (its VFS 401-outside-a-source failure — see
+    `internal/backend/kodi.go`). Never wire a silent fallback like this
+    into a NEW backend without an equally real, confirmed failure
+    condition of its own — Plex and Jellyfin still don't have this, and
+    still shouldn't get it "just in case."
+  - **`KindLocal`, a dedicated server kind** (2026-09-12, direct
+    request): the user explicitly adds a "local mount" server — no
+    host, no credentials, just a path-prefix mapping to a disk
+    ClipHanger already has access to — and a client (DemoFlex) chooses
+    to resolve a specific item through it, same as choosing any other
+    server. This is NOT the same thing as the bullet above: nothing
+    engages it automatically or silently. See
+    `internal/backend/local.go`.
 - **Credentials never travel from a client.** Media-server credentials
   are entered in ClipHanger's own web UI and stay on the box. Clients
   hold only an API key. There is deliberately no client-facing endpoint

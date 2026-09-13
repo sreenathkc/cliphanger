@@ -48,6 +48,13 @@ relative to where the media actually lives.
 
 - **Plex, Kodi, Jellyfin** — one job model across all three; each
   backend resolves its own server's item id to a real streamable URL.
+- **Local Folder / NAS Mount** — an optional, explicitly-configured
+  server kind that reads a file straight off a disk ClipHanger already
+  has access to, instead of streaming it from Plex/Kodi/Jellyfin over
+  HTTP — no server session, auth, or transcode step to go wrong. A
+  client chooses when to resolve an item this way, e.g. as a fallback
+  once a normal server attempt fails. See "Optional: direct disk
+  access" below.
 - **Sign in with Plex** — the standard plex.tv PIN/link flow, followed
   by automatic server discovery (`GET /api/v2/resources`), preferring a
   server's LOCAL network address over a remote/relay one. No manual
@@ -343,6 +350,47 @@ However you installed it, the steps from here are the same:
 
 That's it — ClipHanger is ready to accept jobs. See `docs/API.md` for
 what a client actually sends.
+
+### Optional: direct disk access (skip Plex/Kodi/Jellyfin's own serving)
+
+Rather than streaming a file over HTTP from its own media server,
+ClipHanger can read it straight off disk instead — useful as a faster,
+more reliable path when a server's own serving is flaky for a specific
+item (see `docs/DECISIONS.md`). This needs two things, one on the
+container, one in the Setup page.
+
+**1. Give the container access to your media.** It has to be able to
+see the actual files, which means adding a volume mount — this repo's
+`docker-compose.yml` doesn't include one by default, since not every
+install wants this. Add a line under the existing `data` volume:
+
+```yaml
+    volumes:
+      - ./data:/data
+      - /volume1/Movies:/mnt/nas/Movies   # host path : container path
+```
+
+then `docker compose up -d` to pick it up. On **Windows/macOS Docker
+Desktop** specifically, the host path has to be somewhere Docker
+Desktop can already reach — a mapped network drive or mounted share on
+the host itself, then that host path into the container the same way
+(Docker Desktop's own Settings → Resources → File sharing controls
+which host paths it'll allow at all). A plain Linux Docker host can
+bind-mount a network share (NFS/SMB) directly.
+
+**2. Add a "Local Folder / NAS Mount" server** on the Setup page —
+pick that as the Kind, give it a name, and fill in two prefixes: the
+path exactly as your *real* media server (Plex/Kodi/Jellyfin) reports
+it for a file, and the container path from step 1 that points at the
+same folder. **The first one has to match exactly** — it's a plain text
+prefix comparison, not resolved or guessed. If you're not sure what
+your media server actually calls that folder, add the mount anyway and
+try generating a preview through it once — a failed job's error names
+the exact path that was attempted, which is exactly the prefix to use.
+
+A client (DemoFlex) chooses when to actually try this server for a
+given item — adding it here doesn't change how anything already
+configured behaves.
 
 ### Environment variables
 

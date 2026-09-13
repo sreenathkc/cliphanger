@@ -111,6 +111,7 @@ func main() {
 		backend.NewPlexBackend(),
 		backend.NewKodiBackend(),
 		backend.NewJellyfinBackend(),
+		backend.NewLocalBackend(),
 	)
 
 	q := queue.New(st, registry, mediaDir, jobTimeout, logger)

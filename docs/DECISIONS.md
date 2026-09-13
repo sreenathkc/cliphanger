@@ -46,7 +46,7 @@ write a second client without reading DemoFlex's source.
 
 ---
 
-## Media is streamed over HTTP, never read from disk
+## Media is streamed over HTTP by default, direct disk access is opt-in
 
 ffmpeg opens an HTTP URL as happily as a file. Streaming from the media
 server means:
@@ -72,6 +72,26 @@ user who hits it now has a way through instead of a dead end. Deliberately
 NOT extended to Plex or Jellyfin, which don't have a confirmed failure
 mode to trigger on, and NOT a "read files directly" general mode — see
 `CLAUDE.md`'s hard rule for the boundary.
+
+**A real "read files directly" mode was added anyway, 2026-09-12 —
+just not as a hidden fallback.** Direct request, after DemoFlex hit a
+run of real failures resolving a Kodi item through Kodi's own API
+(a stale library id, then a VFS 404 for an NFS-sourced file): "if
+cliphanger has an option to set/mount a path... [it] can access the
+file directly instead of plex/kodi." Rather than extend the Kodi
+rescue's "only after a confirmed failure" trigger to Plex/Jellyfin too
+(more special-casing per backend, still hidden behind a specific error
+condition each), this is `KindLocal` — its own explicit server kind
+with nothing but a path-prefix mapping, no host, no credentials. A
+client resolves an item through it exactly the way it would resolve
+through any other configured server; nothing engages it automatically.
+Reuses `LocalPathFrom`/`LocalPathTo` for its own mapping (a `KindLocal`
+server has nothing else to configure) — see
+`internal/backend/local.go`. The trade-off from the top of this section
+(no NAS mount needed, works on any host) is the thing being deliberately
+given up here, in exchange for a path that skips a media server's own
+session/auth/transcode layer entirely — worth it specifically because
+it's the user's own explicit choice per item, not a default.
 
 ---
 

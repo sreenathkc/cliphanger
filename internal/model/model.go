@@ -10,16 +10,28 @@ import (
 	"time"
 )
 
-// ServerKind is one of the three backends ClipHanger talks to. No
-// backend is privileged (CLAUDE.md's "no privileged backend" rule) —
-// this type exists purely to pick which Backend implementation resolves
-// a given Source, never to branch UI or API behavior by kind.
+// ServerKind is one of the backends ClipHanger talks to. No backend is
+// privileged (CLAUDE.md's "no privileged backend" rule) — this type
+// exists purely to pick which Backend implementation resolves a given
+// Source, never to branch UI or API behavior by kind.
 type ServerKind string
 
 const (
 	KindPlex     ServerKind = "plex"
 	KindKodi     ServerKind = "kodi"
 	KindJellyfin ServerKind = "jellyfin"
+	// KindLocal added 2026-09-12, per direct request: reads a file
+	// straight off a disk ClipHanger already has access to (a NAS share
+	// mounted into its own container, say) instead of streaming it from
+	// a media server over HTTP — no server, no credentials, nothing
+	// network-facing. See internal/backend/local.go. A deliberate,
+	// explicitly-configured server the user sets up FOR this purpose —
+	// not the same thing as Kodi's own optional LocalPathFrom/LocalPathTo
+	// fallback (still there, unchanged, narrower: only engages after a
+	// CONFIRMED 401 on Kodi's own VFS). Reuses those same two fields for
+	// its own mapping, since a KindLocal server has nothing else to
+	// configure.
+	KindLocal ServerKind = "local"
 )
 
 // Server is one configured media server. Credentials live here but are

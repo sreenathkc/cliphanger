@@ -398,7 +398,7 @@ func (s *Server) handleAddServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := model.ServerKind(r.FormValue("kind"))
-	if kind != model.KindPlex && kind != model.KindKodi && kind != model.KindJellyfin {
+	if kind != model.KindPlex && kind != model.KindKodi && kind != model.KindJellyfin && kind != model.KindLocal {
 		redirectWithFlash(w, r, "/ui/setup", "Unknown server kind.", true)
 		return
 	}
@@ -415,7 +415,20 @@ func (s *Server) handleAddServer(w http.ResponseWriter, r *http.Request) {
 		LocalPathFrom: r.FormValue("localPathFrom"),
 		LocalPathTo:   r.FormValue("localPathTo"),
 	}
-	if srv.Name == "" || srv.Host == "" || srv.Port == 0 {
+	// KindLocal has no host/port at all, and its OWN path-mapping
+	// fields are named differently in the form (mountPathFrom/To, not
+	// localPathFrom/To) specifically so they can't collide with Kodi's
+	// own optional fallback fields of the same underlying meaning when
+	// both sit in the same <form> — see setup.html's own comment on
+	// field-local.
+	if kind == model.KindLocal {
+		srv.LocalPathFrom = r.FormValue("mountPathFrom")
+		srv.LocalPathTo = r.FormValue("mountPathTo")
+		if srv.Name == "" || srv.LocalPathFrom == "" || srv.LocalPathTo == "" {
+			redirectWithFlash(w, r, "/ui/setup", "Name and both path prefixes are required for a local mount.", true)
+			return
+		}
+	} else if srv.Name == "" || srv.Host == "" || srv.Port == 0 {
 		redirectWithFlash(w, r, "/ui/setup", "Name, host and port are all required.", true)
 		return
 	}

@@ -63,7 +63,17 @@ deliberately no client-facing endpoint for it.
 }
 ```
 
-`kind` is one of `plex`, `kodi`, `jellyfin`.
+`kind` is one of `plex`, `kodi`, `jellyfin`, `local`.
+
+`local` (2026-09-12) isn't a media server at all — it's a direct disk
+mount the admin configured in Setup (a path-prefix mapping, no
+host/credentials). Resolving an item through it means submitting the
+raw file path your OWN source (Plex/Kodi/Jellyfin) reports for that
+item as `source.itemId`, instead of that source's own opaque id — see
+`docs/DECISIONS.md`'s "Media is streamed over HTTP by default, direct
+disk access is opt-in" for why this exists and when it's actually worth
+trying (typically: as a fallback after resolving through the item's own
+real server fails, not as the first attempt).
 
 ### `POST /jobs`
 
