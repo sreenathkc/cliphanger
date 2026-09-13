@@ -428,8 +428,16 @@ func (s *Server) handleAddServer(w http.ResponseWriter, r *http.Request) {
 	if kind == model.KindLocal {
 		srv.LocalPathFrom = r.FormValue("mountPathFrom")
 		srv.LocalPathTo = r.FormValue("mountPathTo")
-		if srv.Name == "" || srv.LocalPathFrom == "" || srv.LocalPathTo == "" {
-			redirectWithFlash(w, r, "/ui/setup", "Name and both path prefixes are required for a local mount.", true)
+		// LocalPathFrom is NOT required here (2026-09-13, real report:
+		// requiring it up front blocked the very "learn it later" flow
+		// this server kind is designed around — see
+		// Server.LastAttemptedPath and LocalBackend.TestConnection's own
+		// comments). Leaving it blank just means every attempt through
+		// this server fails until you either fill it in or adopt the
+		// learned value from this server's own Setup card — a real,
+		// visible state, not a silent problem.
+		if srv.Name == "" || srv.LocalPathTo == "" {
+			redirectWithFlash(w, r, "/ui/setup", "Name and ClipHanger's own path are required for a local mount.", true)
 			return
 		}
 	} else if srv.Name == "" || srv.Host == "" || srv.Port == 0 {

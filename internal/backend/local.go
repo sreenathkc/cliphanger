@@ -73,8 +73,15 @@ func (b *LocalBackend) Resolve(ctx context.Context, server model.Server, itemID 
 // against a real item's real reported path, which is what a failed
 // Resolve's own error message is for.
 func (b *LocalBackend) TestConnection(ctx context.Context, server model.Server) error {
-	if server.LocalPathFrom == "" || server.LocalPathTo == "" {
-		return fmt.Errorf("both path prefixes are required for a local mount")
+	// LocalPathFrom is deliberately NOT required here (2026-09-13, real
+	// report: requiring it up front made adding a server and THEN
+	// learning the right value via Server.LastAttemptedPath impossible —
+	// you'd never get past this check to generate the first attempt
+	// that teaches you the value). Only LocalPathTo — the actual mount —
+	// is something this check can verify at all; see this function's
+	// own doc comment for why the other half can't be.
+	if server.LocalPathTo == "" {
+		return fmt.Errorf("ClipHanger's own path is required for a local mount")
 	}
 	info, err := os.Stat(server.LocalPathTo)
 	if err != nil {
