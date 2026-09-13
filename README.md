@@ -373,18 +373,36 @@ and can't be skipped by any UI. How you get there differs:
   intermediate step. If your NAS shares are already mounted on this
   host for other purposes (Sonarr/Radarr etc. usually need this too),
   reuse the same mount point.
-- **Windows (Docker Desktop)** — map the NAS share as a network drive
-  first (most NAS boxes, Synology included, speak SMB even if you also
-  use NFS elsewhere): File Explorer → **This PC** → **Map network
-  drive** → `\\<nas-ip>\<share-name>` → pick a drive letter (e.g. `Z:`).
-  Then Docker Desktop → **Settings → Resources → File sharing** → make
-  sure that drive is allowed. Known rough edge: Docker Desktop's WSL2
-  backend sometimes can't cleanly bind-mount a *mapped* network drive
-  letter — if step 4 below shows an empty/missing folder, the fallback
-  is mounting the SMB share directly inside the WSL2 Linux filesystem
-  instead (`wsl` from PowerShell, then a normal Linux `mount -t cifs`)
-  and pointing the compose volume at that path instead of a drive
-  letter.
+- **Windows (Docker Desktop)** — two options, try the first one first:
+
+  **Option A — mapped network drive.** File Explorer → **This PC** →
+  **Map network drive** → `\\<nas-ip>\<share-name>` → pick a drive
+  letter (e.g. `Z:`). Then Docker Desktop → **Settings → Resources →
+  File sharing** → make sure that drive is allowed. Reference it in
+  `docker-compose.yml` as `Z:\:/mnt/nas` (step 2 below), then check with
+  step 3's `docker exec ... ls` — if you see your real files, you're
+  done. If it's empty or errors, that's a real, known limitation: a
+  *mapped* network drive is a Windows-Explorer-session construct, and
+  Docker Desktop's WSL2 backend doesn't always bind-mount it cleanly.
+  Move to Option B.
+
+  **Option B — mount it inside WSL2 directly (more reliable for a
+  network share).** Docker Desktop's WSL2 backend is a real Linux
+  environment underneath, which CAN mount an SMB share natively — this
+  sidesteps the drive-letter translation Option A relies on entirely.
+
+  ```
+  wsl                                              # from PowerShell
+  sudo mkdir -p /mnt/nas-share
+  sudo mount -t cifs //<nas-ip>/<share-name> /mnt/nas-share \
+    -o username=<nas-username>,password=<nas-password>,vers=3.0
+  ```
+
+  Then point `docker-compose.yml`'s volume at `/mnt/nas-share` (a
+  regular Linux path now, not a drive letter) instead of `Z:\`. One
+  catch: this mount doesn't survive a Windows/WSL restart on its own —
+  either re-run it after a reboot, or add it to that WSL distro's own
+  `/etc/fstab` if you want it permanent.
 - **macOS (Docker Desktop)** — Finder → **Go → Connect to Server**
   (`smb://<nas-ip>/<share-name>` or `nfs://<nas-ip>/<path>`), which
   mounts it under `/Volumes/<share-name>`. Docker Desktop's **Settings →
@@ -424,15 +442,20 @@ see your real folders/files. Empty output or an error means the mount
 in step 1 or the compose line in step 2 needs another look before
 anything past this point will work.
 
-**4. Add a "Local Folder / NAS Mount" server** on the Setup page —
-pick that as the Kind, give it a name, and fill in two prefixes: the
-path exactly as your *real* media server (Plex/Kodi/Jellyfin) reports
-it for a file, and the container path from step 2 that points at the
-same folder. **The first one has to match exactly** — it's a plain text
-prefix comparison, not resolved or guessed. If you're not sure what
-your media server actually calls that folder, add the mount anyway and
-try generating a preview through it once — a failed job's error names
-the exact path that was attempted, which is exactly the prefix to use.
+**4. Add a "Local Folder / NAS Mount" server** on the Setup page — pick
+that as the Kind, give it a name, and fill in ClipHanger's own path (the
+container path from step 2 — a **Browse…** button next to that field
+lets you click through this container's real folders instead of typing
+it, so you can confirm step 1–3 actually worked while you're at it).
+The other field — the path exactly as your *real* media server
+(Plex/Kodi/Jellyfin) reports it for a file — is optional at this point:
+**it has to match exactly** when you do fill it in (a plain text prefix
+comparison, not resolved or guessed), so if you don't already know it,
+leave it blank, save the server anyway, and try generating a preview
+through it once. That attempt will fail, but this server's own card on
+the Setup page will then show the exact path it was given, with a
+**Use this as the prefix** button to adopt it — no need to dig through
+the Jobs page by hand.
 
 A client (DemoFlex) chooses when to actually try this server for a
 given item — adding it here doesn't change how anything already
