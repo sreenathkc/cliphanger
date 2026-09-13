@@ -9,6 +9,16 @@
   what the file actually is (4K, HDR10, Atmos, DTS:X). Self-hosted,
   single container, no cloud, no accounts beyond your own media
   servers.</p>
+  <p>There's also an optional fourth kind, <strong>Local Folder / NAS
+  Mount</strong> — not a media server at all, just a disk ClipHanger
+  already has access to. A client can resolve an item through it
+  directly instead of streaming from Plex/Kodi/Jellyfin, e.g. as a
+  fallback when a server's own serving is flaky for a specific item.
+  See the <a href="/ui/setup">Setup</a> page to add one, and this
+  repo's README ("Optional: direct disk access") for how to actually
+  get a NAS share visible to the container in the first place —
+  that part happens outside ClipHanger, in Docker's own volume
+  config.</p>
   <p>Plenty of clients want a frame from a specific moment and can't get
   one on their own — iOS is the motivating case: its media stack has no
   Matroska support, so <code>.mkv</code> (most of a real media library)
