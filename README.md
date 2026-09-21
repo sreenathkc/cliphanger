@@ -8,6 +8,11 @@ back a still and a 20-second clip — plus what the file actually is (4K,
 HDR10, Atmos, DTS:X). Self-hosted, single container, no cloud, no
 accounts beyond your own media servers.
 
+**DemoFlex** — an iOS app that browses demo-worthy movie scenes and
+one-tap plays them on your home theatre — is the first real client
+built on this, and the reason it exists (see [Clients](#clients)
+below).
+
 > **Status: early, working.** Core pipeline (server config, resolve,
 > extract, queue, web UI, Sign in with Plex) runs end-to-end and has
 > been tested against a real Plex library on a real NAS. Kodi and
