@@ -19,6 +19,32 @@ accounts beyond your own media servers.
   <img src="docs/screenshots/cliphanger-setup.jpg" width="700" alt="ClipHanger's Setup page — media servers, retention, concurrency, and clip duration settings">
 </p>
 
+## Contents
+
+- [Why](#why)
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Installation](#installation)
+  - [Before you start](#before-you-start)
+  - [Option 1: Docker Compose (recommended)](#option-1-docker-compose-recommended)
+    - [Linux (Docker Engine, a home server, a mini PC, etc.)](#linux-docker-engine-a-home-server-a-mini-pc-etc)
+    - [Windows or macOS (Docker Desktop)](#windows-or-macos-docker-desktop)
+  - [Option 2: Plain `docker run` (no compose file)](#option-2-plain-docker-run-no-compose-file)
+  - [Option 3: Synology NAS](#option-3-synology-nas)
+  - [Option 4: Unraid](#option-4-unraid)
+  - [Option 5: Build and run without Docker at all](#option-5-build-and-run-without-docker-at-all)
+    - [Why isn't ffmpeg bundled?](#why-isnt-ffmpeg-bundled)
+- [First-time setup](#first-time-setup)
+  - [Optional: direct disk access (skip Plex/Kodi/Jellyfin's own serving)](#optional-direct-disk-access-skip-plexkodijellyfins-own-serving)
+  - [Environment variables](#environment-variables)
+- [API](#api)
+- [Documentation](#documentation)
+- [Clients](#clients)
+- [Status / roadmap](#status--roadmap)
+- [Contributing](#contributing)
+- [Licence](#licence)
+- [Security](#security)
+
 ## Why
 
 Plenty of clients want a frame from a specific moment and can't get one.
