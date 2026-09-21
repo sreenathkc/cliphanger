@@ -15,6 +15,10 @@ accounts beyond your own media servers.
 > servers. No release builds or container images are published yet —
 > build from source (below).
 
+<p align="center">
+  <img src="docs/screenshots/cliphanger-setup.jpg" width="700" alt="ClipHanger's Setup page — media servers, retention, concurrency, and clip duration settings">
+</p>
+
 ## Why
 
 Plenty of clients want a frame from a specific moment and can't get one.
