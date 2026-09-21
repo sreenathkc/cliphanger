@@ -505,6 +505,12 @@ or Jellyfin library: DemoFlex isn't on the App Store yet, but it's
 running on real hardware via TestFlight. Email
 **skcappadmin@gmail.com** and I'll send you an invite link.
 
+<p align="center">
+  <img src="docs/screenshots/demoflex-browse.png" width="220" alt="DemoFlex browse feed, showing demo-worthy scenes grouped by tag">
+  <img src="docs/screenshots/demoflex-movies.png" width="220" alt="DemoFlex movie grid view">
+  <img src="docs/screenshots/demoflex-add-scene.png" width="220" alt="DemoFlex add-a-scene flow with tagging and timeline scrub">
+</p>
+
 ## Status / roadmap
 
 - Plex: implemented and tested end-to-end against a real library,
