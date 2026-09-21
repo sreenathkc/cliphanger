@@ -500,6 +500,11 @@ curl -H "X-Api-Key: $KEY" http://your-host:8420/health
   this exists. ClipHanger knows nothing about it, and shouldn't — the
   API is generic, not shaped around any one client.
 
+If that sounds like something you'd actually use on your own Plex, Kodi,
+or Jellyfin library: DemoFlex isn't on the App Store yet, but it's
+running on real hardware via TestFlight. Email
+**skcappadmin@gmail.com** and I'll send you an invite link.
+
 ## Status / roadmap
 
 - Plex: implemented and tested end-to-end against a real library,
