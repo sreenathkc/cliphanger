@@ -32,6 +32,18 @@ type ResolvedSource struct {
 	// with -headers placed before -i"). Empty for Plex/Kodi, which
 	// carry their credential in URL itself; Jellyfin populates this.
 	ExtraInputArgs []string
+	// Title is the item's own display title, straight from the media
+	// server's own metadata (2026-09-22, real report: "it just shows a
+	// library file path which wont make any sense to the user"). This
+	// is NOT the client-app-supplied metadata CLAUDE.md's "a reader of
+	// this repo should never need to know [which client]" rule guards
+	// against — every backend already fetches (or, Jellyfin, can
+	// cheaply fetch) this straight from the SAME server call that
+	// resolves the file, and any client would want it. Best-effort:
+	// empty is fine (Job.Title then falls back to the redacted file
+	// path, same as before this existed) rather than failing the whole
+	// resolve over a missing/unparseable title.
+	Title string
 }
 
 // Redacted returns URL with any credential-shaped query parameter or
@@ -42,16 +54,26 @@ type ResolvedSource struct {
 // rule asks for, applied once, centrally, rather than trusted to be
 // remembered at every call site that might log a URL.
 func (r ResolvedSource) Redacted() string {
-	return redact(r.URL)
+	return Redact(r.URL)
 }
 
 var credentialParamPattern = regexp.MustCompile(`(?i)([?&](?:X-Plex-Token|api_key|apikey|token)=)[^&]+`)
 var userinfoPattern = regexp.MustCompile(`://[^/@]+@`)
 
-func redact(url string) string {
-	url = credentialParamPattern.ReplaceAllString(url, "$1REDACTED")
-	url = userinfoPattern.ReplaceAllString(url, "://REDACTED@")
-	return url
+// Redact scrubs any credential-shaped query parameter or userinfo
+// component out of s, wherever it appears — not just when s is itself
+// a bare URL. Exported (2026-09-22, real bug: a live X-Plex-Token
+// showed up verbatim on the Jobs page) so callers OUTSIDE this package
+// can apply it too — specifically queue.process's `fail` closure,
+// which stores whatever a failed HTTP request's own *url.Error.Error()
+// says, and that Go stdlib error format embeds the full request URL
+// unredacted by construction. ResolvedSource.Redacted() alone never
+// caught this: it only ever redacts a URL that resolution already
+// succeeded in producing, not an error from resolution failing.
+func Redact(s string) string {
+	s = credentialParamPattern.ReplaceAllString(s, "$1REDACTED")
+	s = userinfoPattern.ReplaceAllString(s, "://REDACTED@")
+	return s
 }
 
 // Backend resolves items for exactly one ServerKind and can verify a

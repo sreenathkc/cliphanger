@@ -215,12 +215,23 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 	defer q.liveLogs.finish(job.CaptureID)
 
 	fail := func(err error) {
+		// Redact, not just err.Error() (real bug, 2026-09-22): a failed
+		// HTTP request's own *url.Error.Error() embeds the full request
+		// URL verbatim — Get "http://host:port/path?X-Plex-Token=...":
+		// <cause> — by construction, straight from net/http, well
+		// before any of this package's own code ever sees it. That put
+		// a live Plex token on the Jobs page AND in this log line every
+		// time a resolve step timed out or failed to connect.
+		// backend.Redact is the same scrub ResolvedSource.Redacted()
+		// uses, just applied to the whole error string here since
+		// there's no ResolvedSource to call it on yet.
+		redacted := backend.Redact(err.Error())
 		job.State = model.StateFailed
-		job.Error = err.Error()
+		job.Error = redacted
 		if updateErr := q.store.UpdateJob(job); updateErr != nil {
 			q.logger.Error("failed to persist failed job", "captureId", job.CaptureID, "error", updateErr)
 		}
-		q.logger.Warn("job failed", "captureId", job.CaptureID, "error", err)
+		q.logger.Warn("job failed", "captureId", job.CaptureID, "error", redacted)
 	}
 
 	server, ok := q.store.GetServer(job.Source.ServerID)
@@ -267,9 +278,13 @@ func (q *Queue) process(ctx context.Context, job model.Job) {
 	// this function does the same, so this rides along for free either
 	// way. Redacted before it's ever set (2026-09-11, real report: "the
 	// jobs list doesnt show which movie it was or which file it was
-	// used") — see Job.ResolvedSource's own doc comment for why this is
-	// the resolved FILE, not a movie title.
+	// used") — see Job.ResolvedSource's own doc comment.
 	job.ResolvedSource = resolved.Redacted()
+	// Title rides along the same way (2026-09-22, real report — see
+	// Job.Title's own doc comment). Whatever a backend came back with,
+	// including empty — the Jobs template falls back to ResolvedSource
+	// when this is blank, so there's nothing to guard here.
+	job.Title = resolved.Title
 
 	src := extract.Source{
 		URL:            resolved.URL,

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,7 +46,46 @@ func (b *JellyfinBackend) Resolve(ctx context.Context, server model.Server, item
 	return ResolvedSource{
 		URL:            downloadURL,
 		ExtraInputArgs: []string{"-headers", "Authorization: " + b.authHeader(server) + "\r\n"},
+		Title:          b.fetchTitle(ctx, server, itemID),
 	}, nil
+}
+
+// fetchTitle is a SECOND call this backend didn't previously make (this
+// type's own header comment: "One call, no lookup" — no longer quite
+// true, see ResolvedSource.Title's doc comment for why it's worth it
+// anyway). UNVERIFIED against a live Jellyfin server, same caveat this
+// whole backend already carries (docs/SERVER-NOTES.md) — /Items/{id}
+// with the same MediaBrowser-token auth this backend already uses for
+// everything else is the standard shape, but confirm against a real
+// server before trusting it blindly. Best-effort and silent on any
+// failure: Resolve must never fail just because the title lookup did —
+// the file itself is what actually matters, and Job.Title already
+// falls back to the redacted path when this comes back empty.
+func (b *JellyfinBackend) fetchTitle(ctx context.Context, server model.Server, itemID string) string {
+	itemURL := fmt.Sprintf("http://%s:%d/Items/%s", server.Host, server.Port, url.PathEscape(itemID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, itemURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Authorization", b.authHeader(server))
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := b.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	var parsed struct {
+		Name string `json:"Name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return ""
+	}
+	return parsed.Name
 }
 
 func (b *JellyfinBackend) TestConnection(ctx context.Context, server model.Server) error {

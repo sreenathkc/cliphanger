@@ -151,14 +151,24 @@ type Job struct {
 	// job goes on to succeed or fail at the ffmpeg step (2026-09-11,
 	// real report: "the jobs list doesnt show which movie it was or
 	// which file it was used... just shows a uid and some generation
-	// setup details"). Deliberately the resolved FILE, not a movie
-	// title or any other app-supplied metadata — package model has no
-	// concept of either (CLAUDE.md: "a reader of this repo should never
-	// need to know" which client submitted a job), but the file a job
-	// actually read IS this package's own domain data, not something a
-	// client told it. Empty until Resolve runs (still queued, or the
-	// server/item itself couldn't be found at all).
-	ResolvedSource string     `json:"resolvedSource,omitempty"`
+	// setup details"). This is package model's own domain data (the
+	// file a job actually read), not something a client told it —
+	// still true, and still the reason this package has no broader
+	// concept of client-supplied metadata (CLAUDE.md: "a reader of this
+	// repo should never need to know" which client submitted a job).
+	// Empty until Resolve runs (still queued, or the server/item itself
+	// couldn't be found at all).
+	ResolvedSource string `json:"resolvedSource,omitempty"`
+	// Title is the item's own display title, straight from the media
+	// server (2026-09-22, real report: a raw internal file path "wont
+	// make any sense to the user"). Distinct from the "not a movie
+	// title" reasoning ResolvedSource's own comment still stands
+	// behind: this is the SERVER's title, not anything DemoFlex (or any
+	// other client) supplied, fetched from the exact same server call
+	// that already resolves the file — see backend.ResolvedSource.Title.
+	// Best-effort: empty when a backend couldn't get one (Jellyfin's
+	// own lookup failing, say), never a reason to fail the job.
+	Title          string     `json:"title,omitempty"`
 	State          JobState   `json:"state"`
 	Error          string     `json:"error,omitempty"`
 	FrameCount     int        `json:"frameCount,omitempty"`

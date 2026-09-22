@@ -25,6 +25,16 @@
     </div>
     <span class="muted">{{.UpdatedAt.Format "Jan 2 15:04:05"}}</span>
   </div>
+  <!-- The item's own display title (2026-09-22, real report: a raw
+       library file path "wont make any sense to the user"). Same
+       availability as ResolvedSource below — empty until Resolve
+       succeeds, and best-effort even then (a backend that couldn't
+       get one, e.g. Jellyfin's own title lookup failing, just leaves
+       this blank rather than failing the job) — falls back to reading
+       as CaptureID/item id alone, same as before this existed. -->
+  {{with .Title}}
+  <div style="margin-top:6px; font-weight:600;">{{.}}</div>
+  {{end}}
   <div class="muted" style="margin-top:6px">
     {{.Source.ServerID}} · item {{.Source.ItemID}} · {{.TimestampSeconds}}s, {{.SpanSeconds}}s span, {{.FPS}}fps
     {{if eq .State "done"}} · {{.FrameCount}} frames · {{.ClipBytes}} bytes{{end}}

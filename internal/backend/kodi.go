@@ -48,6 +48,9 @@ type kodiMovieDetailsResponse struct {
 	Result struct {
 		MovieDetails struct {
 			File string `json:"file"`
+			// title (2026-09-22): requested alongside file below — see
+			// ResolvedSource.Title's own doc comment.
+			Title string `json:"title"`
 		} `json:"moviedetails"`
 	} `json:"result"`
 	Error *struct {
@@ -100,7 +103,7 @@ func (b *KodiBackend) Resolve(ctx context.Context, server model.Server, itemID s
 	var details kodiMovieDetailsResponse
 	err = b.rpc(ctx, server, "VideoLibrary.GetMovieDetails", map[string]interface{}{
 		"movieid":    movieID,
-		"properties": []string{"file"},
+		"properties": []string{"file", "title"},
 	}, &details)
 	if err != nil {
 		return ResolvedSource{}, err
@@ -148,7 +151,7 @@ func (b *KodiBackend) Resolve(ctx context.Context, server model.Server, itemID s
 				// server with no mapping gets exactly the same error as
 				// before, unchanged.
 				if localPath, ok := LocalPath(server, details.Result.MovieDetails.File); ok {
-					return ResolvedSource{URL: localPath}, nil
+					return ResolvedSource{URL: localPath, Title: details.Result.MovieDetails.Title}, nil
 				}
 				return ResolvedSource{}, fmt.Errorf(
 					"Kodi refused to serve %q (401) — this file is outside a configured Kodi SOURCE. "+
@@ -160,7 +163,7 @@ func (b *KodiBackend) Resolve(ctx context.Context, server model.Server, itemID s
 		}
 	}
 
-	return ResolvedSource{URL: streamURL}, nil
+	return ResolvedSource{URL: streamURL, Title: details.Result.MovieDetails.Title}, nil
 }
 
 func (b *KodiBackend) TestConnection(ctx context.Context, server model.Server) error {

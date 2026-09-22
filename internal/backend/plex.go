@@ -31,6 +31,11 @@ func (b *PlexBackend) Kind() model.ServerKind { return model.KindPlex }
 type plexMetadataResponse struct {
 	MediaContainer struct {
 		Metadata []struct {
+			// title (2026-09-22): plain top-level field on every Plex
+			// metadata entry, same response this backend already fetches
+			// to resolve the file — see ResolvedSource.Title's own doc
+			// comment.
+			Title string `json:"title"`
 			Media []struct {
 				Part []struct {
 					Key string `json:"key"`
@@ -93,7 +98,7 @@ func (b *PlexBackend) Resolve(ctx context.Context, server model.Server, itemID s
 	// above. Only the token (still ours to get right) gets escaped.
 	partKey := parsed.MediaContainer.Metadata[0].Media[0].Part[0].Key
 	streamURL := fmt.Sprintf("http://%s:%d%s?X-Plex-Token=%s", server.Host, server.Port, partKey, url.QueryEscape(server.PlexToken))
-	return ResolvedSource{URL: streamURL}, nil
+	return ResolvedSource{URL: streamURL, Title: parsed.MediaContainer.Metadata[0].Title}, nil
 }
 
 func (b *PlexBackend) TestConnection(ctx context.Context, server model.Server) error {
